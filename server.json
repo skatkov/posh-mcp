@@ -1,0 +1,27 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.skatkov/posh",
+  "title": "POSH \u2014 Ruby documentation",
+  "description": "Search and read local Ruby and gem documentation matched to your project's versions.",
+  "version": "0.39.0",
+  "websiteUrl": "https://poshtui.com",
+  "icons": [
+    {
+      "src": "https://poshtui.com/assets/apple-touch-icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "180x180"
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/skatkov/homebrew-tap/releases/download/0.39.0/posh-mcp.mcpb",
+      "fileSha256": "b219b6a5a39179871976d5a0f5768bcbfc42da8d893309d038e295d051e5e060",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

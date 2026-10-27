@@ -1,0 +1,10 @@
+{
+  "name": "posh",
+  "version": "1.0.0",
+  "mcpServers": {
+    "posh": {
+      "command": "posh",
+      "args": ["mcp"]
+    }
+  }
+}

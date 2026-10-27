@@ -1,0 +1,14 @@
+{
+  "name": "posh",
+  "version": "1.0.0",
+  "description": "Search and read local Ruby and gem documentation matched to your project's versions. Requires POSH to be installed and activated.",
+  "author": {
+    "name": "KROONI B.V.",
+    "email": "contact@poshtui.com",
+    "url": "https://poshtui.com"
+  },
+  "homepage": "https://poshtui.com",
+  "repository": "https://github.com/skatkov/posh-mcp",
+  "license": "LicenseRef-POSH-Proprietary",
+  "keywords": ["ruby", "rails", "documentation", "mcp"]
+}
