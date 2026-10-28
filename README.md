@@ -48,7 +48,7 @@ Add this to your client's MCP configuration, replacing the project path:
   "mcpServers": {
     "posh": {
       "command": "posh",
-      "args": ["mcp", "--project", "/absolute/path/to/your/ruby-project"]
+      "args": ["mcp"]
     }
   }
 }
