@@ -83,6 +83,13 @@ This repository includes `.claude-plugin/plugin.json` and `.mcp.json` for plugin
 distribution. POSH must already be installed and activated. This is not a claim
 that Anthropic has reviewed or listed the plugin.
 
+### Cursor plugin
+
+This repository includes `.cursor-plugin/plugin.json` and root `mcp.json`.
+Install and activate POSH first. The integration launches `posh mcp` locally;
+pass the intended absolute project path in tool calls. This is not a claim that
+Cursor has reviewed or listed the plugin. POSH remains proprietary software.
+
 ## Tools
 
 | Tool | Purpose | Effects |
