@@ -1,5 +1,5 @@
 // POSH plugin for OpenCode 2: adds the POSH ruleset to the system prompt of every
-// model request, registers the MCP server, and provides /posh [on|off|auto].
+// model request, registers the MCP server, and provides /posh [on|off|auto|feedback].
 // Mode logic mirrors hooks/posh-hook.sh; test/plugin.test.mjs keeps them in step.
 
 import fs from 'node:fs';
@@ -17,11 +17,12 @@ const ruleset = fs
   .readFileSync(path.join(root, 'skills/posh/SKILL.md'), 'utf8')
   .replace(/^---\r?\n[\s\S]*?\r?\n---\s*/, '')
   .trim();
+const feedback = fs.readFileSync(path.join(root, 'skills/posh/feedback.md'), 'utf8').trim();
 
 function readMode() {
   try {
     const mode = fs.readFileSync(modeFile, 'utf8').trim();
-    return mode === 'on' || mode === 'off' ? mode : 'auto';
+    return ['on', 'off', 'feedback'].includes(mode) ? mode : 'auto';
   } catch {
     return 'auto';
   }
@@ -56,7 +57,7 @@ export default {
     const ruby = inRubyProject(ctx.location.directory);
     const active = () => {
       const mode = readMode();
-      return mode === 'on' || (mode === 'auto' && ruby);
+      return mode === 'on' || mode === 'feedback' || (mode === 'auto' && ruby);
     };
 
     // A server the user configured themselves wins.
@@ -68,12 +69,13 @@ export default {
       on: 'POSH is now on for every project. Confirm in one short line.',
       off: 'POSH is now off. Confirm in one short line.',
       auto: 'POSH is now on for Ruby projects only. Confirm in one short line.',
+      feedback: 'POSH feedback mode is now on for every project. Confirm in one short line.',
     };
 
     await ctx.command.transform((editor) => {
       editor.add({
         name: 'posh',
-        description: 'Check docs for this project\'s versions first (on, off, auto)',
+        description: 'Check docs for this project\'s versions first (on, off, auto, feedback)',
         execute: async ({ sessionID, prompt, delivery }) => {
           const arg = (prompt.text || '').trim();
           const mode = arg === '' ? 'on' : arg;
@@ -95,7 +97,9 @@ export default {
 
     // Compaction is a separate request kind and would otherwise lose the ruleset.
     const addRuleset = (event) => {
-      if (active()) event.system.push({ type: 'text', text: ruleset });
+      if (!active()) return;
+      const text = readMode() === 'feedback' ? ruleset + '\n\n' + feedback : ruleset;
+      event.system.push({ type: 'text', text });
     };
     await ctx.session.hook('context', addRuleset);
     await ctx.session.hook('compaction', addRuleset);

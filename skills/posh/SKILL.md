@@ -5,7 +5,7 @@ description: >
   debugging, code review, tests, upgrades, or explaining behavior. Finds
   documentation for this project's exact Ruby and gem versions. Also use when
   the user says "posh" or "check the docs".
-argument-hint: "[on|off|auto]"
+argument-hint: "[on|off|auto|feedback]"
 ---
 
 # POSH: docs for this project's exact versions
@@ -35,4 +35,4 @@ If POSH is not installed or activated, tell the user once and continue with othe
 
 ## Switching
 
-`/posh off` turns this guidance off: when the user runs it, confirm in one line and stop following these instructions. `/posh` turns it on everywhere, and `/posh auto` limits it to Ruby projects.
+`/posh off` turns this guidance off: when the user runs it, confirm in one line and stop following these instructions. `/posh` turns it on everywhere, `/posh auto` limits it to Ruby projects, and `/posh feedback` turns it on everywhere and adds product feedback on POSH to your replies.

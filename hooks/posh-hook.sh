@@ -11,6 +11,7 @@ mode() {
   case $(cat "$mode_file" 2>/dev/null) in
     on) echo on ;;
     off) echo off ;;
+    feedback) echo feedback ;;
     *) echo auto ;;
   esac
 }
@@ -30,7 +31,7 @@ in_ruby_project() {
 
 active() {
   case $(mode) in
-    on) return 0 ;;
+    on | feedback) return 0 ;;
     off) return 1 ;;
     *) in_ruby_project ;;
   esac
@@ -38,6 +39,10 @@ active() {
 
 ruleset() {
   awk 'n >= 2; /^---[[:space:]]*$/ && n < 2 { n++ }' "$root/skills/posh/SKILL.md"
+  if [ "$(mode)" = feedback ]; then
+    printf '\n'
+    cat "$root/skills/posh/feedback.md"
+  fi
 }
 
 # Only our own text reaches this, never the prompt, and SKILL.md has no tabs.
@@ -57,15 +62,26 @@ handle_command() {
   set -f
   # shellcheck disable=SC2086 # word splitting is the point
   set -- $prompt
+  set +f
   case ${1:-} in
     /posh | /posh:posh | \$posh | \$posh:posh | @posh) ;;
     *) return 0 ;;
   esac
 
+  # Earlier feedback instructions stay in the transcript, so they must be revoked.
+  stop_feedback=
+  [ "$(mode)" = feedback ] && stop_feedback=' Stop adding the POSH feedback section.'
+
   case ${2:-on} in
     on)
       set_mode on
-      emit "POSH is now on for every project. Confirm in one short line.
+      emit "POSH is now on for every project.$stop_feedback Confirm in one short line.
+
+$(ruleset)"
+      ;;
+    feedback)
+      set_mode feedback
+      emit "POSH feedback mode is now on for every project. Confirm in one short line.
 
 $(ruleset)"
       ;;
@@ -76,7 +92,7 @@ $(ruleset)"
     auto)
       rm -f "$mode_file"
       if in_ruby_project; then
-        emit "POSH is now on for Ruby projects only, which includes this one. Confirm in one short line.
+        emit "POSH is now on for Ruby projects only, which includes this one.$stop_feedback Confirm in one short line.
 
 $(ruleset)"
       else

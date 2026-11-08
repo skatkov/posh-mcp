@@ -114,6 +114,7 @@ context at session start, after compaction, and when a subagent starts.
 | --- | --- |
 | `/posh auto` | Default. Active when the project has a `Gemfile`, `Gemfile.lock`, `gems.rb`, or `*.gemspec`, in the working directory or above it, up to the Git root |
 | `/posh` or `/posh on` | Active in every project. Use this when the Ruby app sits in a subdirectory |
+| `/posh feedback` | Same as `/posh on`, and the agent ends replies that used POSH with a **POSH feedback** section. The feedback stays in the reply; nothing is sent anywhere |
 | `/posh off` | Inactive everywhere |
 
 In Codex, use `$posh` in place of `/posh`. The mode is saved in

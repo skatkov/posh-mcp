@@ -15,6 +15,7 @@ const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'posh-plugin-'
 process.env.XDG_CONFIG_HOME = path.join(tmp, 'config');
 const modeFile = path.join(tmp, 'config/posh/agent-mode');
 const MARKER = "POSH: docs for this project's exact versions";
+const FEEDBACK = 'POSH feedback: proactively evaluate successful use too';
 
 const project = (...files) => {
   const dir = fs.mkdtempSync(path.join(tmp, 'project-'));
@@ -117,6 +118,38 @@ test('hook commands switch modes and the OpenCode plugin honours the same file',
   assert.match(auto.additionalContext, /This is not one/);
   assert.equal(fs.existsSync(modeFile), false);
   assert.equal(hostOnOther.system(), '');
+});
+
+test('feedback mode adds the evaluation rules on top of on, everywhere, in both hosts', async () => {
+  const other = project();
+  const host = await setupOpenCode(other);
+
+  const switched = runHook('UserPromptSubmit', other, prompt('/posh feedback'));
+  assert.match(switched.additionalContext, /POSH feedback mode is now on/);
+  for (const text of [switched.additionalContext, runHook('SessionStart', other).additionalContext, host.system(), host.system('compaction')]) {
+    assert.ok(text.includes(MARKER));
+    assert.ok(text.includes(FEEDBACK));
+  }
+
+  const on = runHook('UserPromptSubmit', other, prompt('/posh on'));
+  assert.match(on.additionalContext, /Stop adding the POSH feedback section/);
+  assert.ok(!on.additionalContext.includes(FEEDBACK));
+  assert.ok(!runHook('SessionStart', other).additionalContext.includes(FEEDBACK));
+  assert.ok(!host.system().includes(FEEDBACK));
+  assert.doesNotMatch(runHook('UserPromptSubmit', other, prompt('/posh on')).additionalContext, /Stop adding/);
+});
+
+test('OpenCode /posh feedback persists the mode', async () => {
+  const host = await setupOpenCode(project());
+  await host.run('feedback');
+  assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'feedback');
+  assert.match(host.sent.at(-1).text, /POSH feedback mode is now on/);
+  assert.ok(host.system().includes(FEEDBACK));
+});
+
+test('/posh auto still sees a project whose only marker is a gemspec', () => {
+  const auto = runHook('UserPromptSubmit', project('thing.gemspec'), prompt('/posh auto'));
+  assert.match(auto.additionalContext, /which includes this one/);
 });
 
 test('ordinary prompts neither change the mode nor add context', () => {
