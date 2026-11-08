@@ -77,11 +77,48 @@ gemini extensions install https://github.com/skatkov/posh-mcp
 The extension runs `posh mcp` locally. Ask the agent to pass your absolute Ruby
 project directory in tool calls if its working directory is not your project.
 
-### Claude Code plugin
+### Agent plugins: Claude Code, Codex, and OpenCode
 
-This repository includes `.claude-plugin/plugin.json` and `.mcp.json` for plugin
-distribution. POSH must already be installed and activated. This is not a claim
-that Anthropic has reviewed or listed the plugin.
+An MCP server alone gets used late, because agents tend to reach for it only
+once they are stuck. These plugins connect the server and also tell the agent
+to check POSH before relying on memory for Ruby, Rails, and gem work. Install
+and activate POSH first.
+
+Claude Code, as two separate prompts:
+
+```text
+/plugin marketplace add skatkov/posh-mcp
+/plugin install posh@posh
+```
+
+Codex, then open `/hooks`, trust the POSH hooks, and start a new thread. Codex
+skips hooks until they are trusted:
+
+```sh
+codex plugin marketplace add skatkov/posh-mcp
+codex plugin add posh@posh
+```
+
+OpenCode 2:
+
+```sh
+opencode plugin add github:skatkov/posh-mcp#main
+```
+
+The instructions come from [`skills/posh/SKILL.md`](skills/posh/SKILL.md).
+OpenCode adds them to the system prompt of every model request. Claude Code and
+Codex have no plugin API for the system prompt, so they receive them as hidden
+context at session start, after compaction, and when a subagent starts.
+
+| Command | Effect |
+| --- | --- |
+| `/posh auto` | Default. Active when the project has a `Gemfile`, `Gemfile.lock`, `gems.rb`, or `*.gemspec`, in the working directory or above it, up to the Git root |
+| `/posh` or `/posh on` | Active in every project. Use this when the Ruby app sits in a subdirectory |
+| `/posh off` | Inactive everywhere |
+
+In Codex, use `$posh` in place of `/posh`. The mode is saved in
+`~/.config/posh/agent-mode` and shared by all three agents. These plugins are
+not a claim that Anthropic, OpenAI, or OpenCode has reviewed or listed them.
 
 ### Cursor plugin
 
