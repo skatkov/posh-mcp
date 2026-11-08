@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "posh",
+  "description": "Documentation for your project's exact Ruby and gem versions.",
+  "owner": {
+    "name": "KROONI B.V.",
+    "url": "https://poshtui.com"
+  },
+  "plugins": [
+    {
+      "name": "posh",
+      "description": "Makes Claude check POSH documentation for the project's exact Ruby and gem versions.",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}
