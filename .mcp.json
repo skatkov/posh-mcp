@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "posh": {
+    "docs": {
       "command": "posh",
       "args": ["mcp"]
     }
