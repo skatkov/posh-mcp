@@ -123,10 +123,24 @@ not a claim that Anthropic, OpenAI, or OpenCode has reviewed or listed them.
 
 ### Cursor plugin
 
-This repository includes `.cursor-plugin/plugin.json` and root `mcp.json`.
-Install and activate POSH first. The integration launches `posh mcp` locally;
-pass the intended absolute project path in tool calls. This is not a claim that
-Cursor has reviewed or listed the plugin. POSH remains proprietary software.
+Install and activate POSH first, then paste this into the browser address bar.
+Cursor prompts before it installs:
+
+```text
+cursor://anysphere.cursor-deeplink/mcp/install?name=posh&config=eyJjb21tYW5kIjoicG9zaCIsImFyZ3MiOlsibWNwIl19
+```
+
+The encoded configuration is `{"command":"posh","args":["mcp"]}`. GitHub strips
+`cursor://` links, so the one-click button lives in the
+[installation docs](https://poshtui.com/docs/installation/#integrations)
+instead.
+
+This repository also includes `.cursor-plugin/plugin.json` and root `mcp.json`.
+The deeplink adds only the MCP server; the plugin format also carries the POSH
+skill, and Cursor lists plugins only after its own review. The integration
+launches `posh mcp` locally; pass the intended absolute project path in tool
+calls. This is not a claim that Cursor has reviewed or listed the plugin. POSH
+remains proprietary software.
 
 ## Tools
 
