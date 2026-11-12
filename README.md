@@ -88,7 +88,7 @@ Claude Code, as two separate prompts:
 
 ```text
 /plugin marketplace add skatkov/posh-mcp
-/plugin install posh@posh
+/plugin install posh@skatkov
 ```
 
 Codex, then open `/hooks`, trust the POSH hooks, and start a new thread. Codex
@@ -96,7 +96,7 @@ skips hooks until they are trusted:
 
 ```sh
 codex plugin marketplace add skatkov/posh-mcp
-codex plugin add posh@posh
+codex plugin add posh@skatkov
 ```
 
 OpenCode 2:

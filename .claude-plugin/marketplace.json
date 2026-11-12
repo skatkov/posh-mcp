@@ -1,6 +1,6 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
-  "name": "posh",
+  "name": "skatkov",
   "description": "Documentation for your project's exact Ruby and gem versions.",
   "owner": {
     "name": "KROONI B.V.",
