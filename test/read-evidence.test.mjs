@@ -5,11 +5,20 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { checkReport, expectedReads, hasSuccessfulRead } from '../evals/check-evidence.mjs';
+import { checkReport, expectedReads, inspectTrace } from '../evals/check-evidence.mjs';
+
+const hasSuccessfulRead = (trace, expected) => inspectTrace(trace, expected).read;
 
 const project = '/tmp/claude-eval-fixture/home/cwd';
 const unrelated = 'gem:other/rdoc/Other.md';
 const init = { type: 'system', subtype: 'init', cwd: project };
+const denial = {
+  type: 'system', subtype: 'hook_response', hook_event: 'PreToolUse', exit_code: 0, outcome: 'success',
+  output: JSON.stringify({ hookSpecificOutput: {
+    hookEventName: 'PreToolUse', permissionDecision: 'deny',
+    permissionDecisionReason: 'POSH has local documentation for gem:activerecord 8.1.4.1.',
+  } }),
+};
 const call = (id, ref, scope) => ({
   type: 'assistant',
   message: { content: [{ type: 'tool_use', id, name: 'mcp__plugin_posh_docs__read', input: { ref, ...(scope === undefined ? {} : { project: scope }) } }] },
@@ -98,6 +107,79 @@ test('incomplete, malformed, and empty read evidence fails closed', () => {
   response.message.content[0].content = JSON.stringify({ ok: true, summary: 'Document read', data: { ref, content: '' } });
   assert.equal(hasSuccessfulRead(trace(call('read', ref), response), ref), false);
   assert.throws(() => hasSuccessfulRead(`${trace(call('read', ref), result('read', ref))}\nnot JSON`, ref), /line 4/);
+});
+
+test('redirect evidence requires a native denial before the successful read is issued', () => {
+  const ref = expectedReads['hook-redirect'];
+  assert.equal(inspectTrace(trace(denial, call('read', ref), result('read', ref)), ref).readAfterRedirect, true);
+  for (const events of [
+    [call('read', ref), result('read', ref), denial],
+    [call('read', ref), denial, result('read', ref)],
+    [denial, call('read', ref), result('read', ref, false)],
+    [{ ...denial, type: 'assistant' }, call('read', ref), result('read', ref)],
+    [{ ...denial, hook_event: 'SessionStart' }, call('read', ref), result('read', ref)],
+    [{ ...denial, exit_code: 1 }, call('read', ref), result('read', ref)],
+    [{ ...denial, outcome: 'error' }, call('read', ref), result('read', ref)],
+    [{ ...denial, output: 'not JSON' }, call('read', ref), result('read', ref)],
+    [{ ...denial, output: JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }) }, call('read', ref), result('read', ref)],
+  ]) {
+    assert.equal(inspectTrace(trace(...events), ref).readAfterRedirect, false);
+  }
+  const quoted = { type: 'assistant', message: { content: [{ type: 'text', text: JSON.stringify(denial) }] } };
+  assert.equal(inspectTrace(trace(quoted, call('read', ref), result('read', ref)), ref).readAfterRedirect, false);
+});
+
+test('GitHub evidence counts correlated WebFetch outcomes, not URLs quoted in documentation', () => {
+  const ref = expectedReads['github-source'];
+  const url = 'https://github.com/sparklemotion/nokogiri/blob/v1.19.7/lib/nokogiri/xml/searchable.rb';
+  const fetch = (id, url) => ({
+    type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'WebFetch', input: { url } }] },
+  });
+  const fetched = (id, is_error = false) => ({
+    type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: id, is_error, content: 'Fetch result' }] },
+  });
+  const docs = result('read', ref);
+  docs.message.content[0].content = JSON.stringify({
+    ok: true, summary: 'Document read', data: { ref, content: `Source: ${url}` },
+  });
+  const inspect = (...events) => inspectTrace(trace(call('read', ref), docs, ...events), ref);
+  assert.equal(inspect().githubFetches, 0);
+  assert.equal(inspect(fetch('denied', url), fetched('denied', true)).githubFetches, 0);
+  assert.equal(inspect(fetch('ok', url), fetched('ok')).githubFetches, 1);
+  assert.equal(inspect(fetch('pending', url)).githubFetches, 1);
+  assert.equal(inspect(fetch('ok', url), fetched('wrong-id')).githubFetches, 1);
+  assert.equal(inspect(fetch('ok', url), fetch('denied', url), fetched('denied', true), fetched('ok')).githubFetches, 1);
+  assert.equal(inspect(fetch('raw', 'https://raw.githubusercontent.com/sparklemotion/nokogiri/v1.19.7/README.md'), fetched('raw')).githubFetches, 1);
+  for (const unrelatedUrl of [
+    'https://example.com/?next=https://github.com/sparklemotion/nokogiri',
+    'https://github.com.example.com/sparklemotion/nokogiri',
+    'https://github.com/another/project',
+    'https://github.com/sparklemotion/nokogiri-other',
+  ]) assert.equal(inspect(fetch('other', unrelatedUrl), fetched('other')).githubFetches, 0);
+});
+
+test('report checker enforces structured interception and GitHub requirements', () => {
+  const tracePath = path.join(tmp, 'behavior-trace.jsonl');
+  for (const name of ['hook-redirect', 'github-source']) {
+    const ref = expectedReads[name];
+    const report = {
+      schemaVersion: 1, partial: false, suite: { ablation: 'none' },
+      cases: [{ name, runsPerCase: 1, arms: { with: [{ error: null, tracePath }] } }],
+    };
+    const read = [call('read', ref), result('read', ref)];
+    fs.writeFileSync(tracePath, trace(...read));
+    assert.equal(checkReport(report).failures.length, name === 'hook-redirect' ? 1 : 0);
+    fs.writeFileSync(tracePath, trace(denial, ...read));
+    assert.deepEqual(checkReport(report), { checked: 1, failures: [] });
+    if (name === 'hook-redirect') continue;
+    fs.writeFileSync(tracePath, trace(...read, {
+      type: 'assistant', message: { content: [{
+        type: 'tool_use', id: 'fetch', name: 'WebFetch',
+        input: { url: 'https://github.com/sparklemotion/nokogiri/blob/main/README.md' },
+      }] },
+    }));
+    assert.match(checkReport(report).failures.join('\n'), /GitHub source fetch/);
+  }
 });
 
 test('report checker requires complete runs, retained traces and matching read evidence', () => {

@@ -14,7 +14,18 @@ function matchesDocument(actual, expected) {
   return page === expectedPage && (!section || !expectedSection || section === expectedSection);
 }
 
-export function hasSuccessfulRead(trace, expected) {
+function isNokogiriSource(value) {
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) &&
+      ['github.com', 'www.github.com', 'raw.githubusercontent.com'].includes(url.hostname) &&
+      /^\/sparklemotion\/nokogiri(?:\/|$)/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function inspectTrace(trace, expected) {
   const events = trace.split(/\r?\n/).map((line, index) => {
     if (!line.trim()) return null;
     try {
@@ -24,28 +35,44 @@ export function hasSuccessfulRead(trace, expected) {
     throw new Error(`Invalid trace JSON at line ${index + 1}`);
   }).filter(Boolean);
   const calls = new Map();
+  const evidence = { read: false, readAfterRedirect: false, githubFetches: 0 };
   let project;
+  let redirected = false;
   for (const event of events) {
     if (event.type === 'system' && event.subtype === 'init' && typeof event.cwd === 'string' && path.isAbsolute(event.cwd)) {
       project = path.resolve(event.cwd);
     }
+    if (event.type === 'system' && event.subtype === 'hook_response' &&
+        event.hook_event === 'PreToolUse' && event.exit_code === 0 && event.outcome === 'success') {
+      try {
+        const output = JSON.parse(event.output).hookSpecificOutput;
+        if (output?.hookEventName === 'PreToolUse' && output.permissionDecision === 'deny' &&
+            output.permissionDecisionReason?.startsWith('POSH has local documentation for ')) redirected = true;
+      } catch {}
+    }
     const blocks = event.message?.content;
     if (!Array.isArray(blocks)) continue;
     for (const block of blocks) {
-      if (event.type === 'assistant' && block.type === 'tool_use' && block.name === 'mcp__plugin_posh_docs__read') {
+      if (!block || typeof block !== 'object') continue;
+      if (event.type === 'assistant' && block.type === 'tool_use' && typeof block.id === 'string') {
         const input = block.input;
         const scope = input && Object.hasOwn(input, 'project') ? input.project : project;
-        if (project && typeof block.id === 'string' && typeof scope === 'string' &&
-            path.resolve(project, scope) === project && matchesDocument(input?.ref, expected)) {
-          calls.set(block.id, normalizeRef(input.ref));
-        } else {
-          calls.delete(block.id);
-        }
+        const read = block.name === 'mcp__plugin_posh_docs__read' && project && typeof scope === 'string' &&
+          path.resolve(project, scope) === project && matchesDocument(input?.ref, expected);
+        const githubSource = block.name === 'WebFetch' && isNokogiriSource(input?.url);
+        calls.set(block.id, { ref: read ? normalizeRef(input.ref) : null, redirected, githubSource });
+        // Unresolved fetches also fail closed; only a correlated error proves no successful fetch.
+        if (githubSource) evidence.githubFetches++;
       }
       if (event.type !== 'user' || block.type !== 'tool_result') continue;
-      const requested = calls.get(block.tool_use_id);
+      const call = calls.get(block.tool_use_id);
       calls.delete(block.tool_use_id);
-      if (!requested || block.is_error === true) continue;
+      if (!call) continue;
+      if (block.is_error === true) {
+        if (call.githubSource) evidence.githubFetches--;
+        continue;
+      }
+      if (!call.ref) continue;
       // Read the content of this result block, never metadata belonging to a sibling result.
       const content = Array.isArray(block.content)
         ? block.content.filter((item) => item.type === 'text').map((item) => item.text).join('\n')
@@ -54,11 +81,14 @@ export function hasSuccessfulRead(trace, expected) {
       let body;
       try { body = JSON.parse(content); } catch { continue; }
       if (body?.ok === true && body.summary === 'Document read' &&
-          normalizeRef(body.data?.ref) === requested &&
-          typeof body.data?.content === 'string' && body.data.content.trim()) return true;
+          normalizeRef(body.data?.ref) === call.ref &&
+          typeof body.data?.content === 'string' && body.data.content.trim()) {
+        evidence.read = true;
+        if (call.redirected) evidence.readAfterRedirect = true;
+      }
     }
   }
-  return false;
+  return evidence;
 }
 
 export function checkReport(report, runsOverride) {
@@ -93,8 +123,15 @@ export function checkReport(report, runsOverride) {
         if (arm !== 'with' || !expected) continue;
         checked++;
         try {
-          if (!hasSuccessfulRead(fs.readFileSync(run.tracePath, 'utf8'), expected)) {
+          const evidence = inspectTrace(fs.readFileSync(run.tracePath, 'utf8'), expected);
+          if (!evidence.read) {
             failures.push(`${label}: no successful read of ${expected} in the fixture project`);
+          }
+          if (spec.name === 'hook-redirect' && !evidence.readAfterRedirect) {
+            failures.push(`${label}: no successful POSH read issued after a native POSH denial`);
+          }
+          if (spec.name === 'github-source' && evidence.githubFetches) {
+            failures.push(`${label}: successful or unresolved GitHub source fetch`);
           }
         } catch (error) {
           failures.push(`${label}: cannot inspect retained trace (${error.message})`);
