@@ -133,6 +133,8 @@ The check resolves the Ruby project above the current working directory, stoppin
 at the Git root, including after entering a worktree. It validates POSH's returned
 project against that root, not against an arbitrary subdirectory. It requires a matching locked gem with installed
 documentation; private gems with docs are treated the same as public ones.
+Redirect instructions pin both search and read to the resolved project, so an MCP
+server started in a different project cannot silently select the wrong versions.
 Gems with no local docs, git-sourced gems, non-Ruby projects in auto mode,
 and `/posh off` are left alone. A broad search of the gem tree gets one
 separate nudge when any locked gem has local docs.

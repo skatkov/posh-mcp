@@ -2,6 +2,7 @@
 require "json"
 require "open3"
 require "fileutils"
+require "shellwords"
 
 def gem_ref(target, source: true)
   if source
@@ -83,14 +84,16 @@ begin
   Dir.mkdir(marker)
 
   subject = gem == "_gem_root" ? "the installed source of the gems this project locks" : "#{library['ref']} #{library['version']}, the version this project locks"
-  query = { query: "<symbol or page name>" }
+  query = { query: "<symbol or page name>", project: project }
   query[:ref] = library["ref"] unless gem == "_gem_root"
+  read = { ref: "<returned document ref>", project: project }
   cli = "posh search '<symbol>'"
   cli += " --ref #{library['ref']}" unless gem == "_gem_root"
+  cli += " --project #{Shellwords.escape(project)}"
   reason = <<~TEXT
     POSH has local documentation for #{subject}.
 
-    Use POSH's search tool with #{JSON.generate(query)}, or `#{cli}`, then read the document ref it returns. Search for README or CHANGELOG for those pages.
+    Use POSH's search tool with #{JSON.generate(query)}, or `#{cli}`, then read the returned document ref using #{JSON.generate(read)}. For CLI reads, keep the same --project argument. Search for README or CHANGELOG for those pages.
 
     This redirect fires once per gem per session. If POSH cannot answer, retry the original call; it will go through. Source inspection remains available for implementation details and debugging.
   TEXT

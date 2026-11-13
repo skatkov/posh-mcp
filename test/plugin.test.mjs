@@ -404,6 +404,23 @@ test('uses the Ruby project root when the current directory is nested', () => {
   assert.equal(toolUse(cwd, { command: 'bundle show kamal' }, { tool: 'Bash', env }).permissionDecision, 'deny');
 });
 
+test('keeps search and read in the resolved project and shell-quotes the CLI path', () => {
+  const original = project('Gemfile.lock');
+  const root = `${original} team's $HOME`;
+  fs.renameSync(original, root);
+  const cwd = path.join(root, 'app/models');
+  fs.mkdirSync(cwd, { recursive: true });
+  const out = toolUse(cwd, { command: 'bundle show kamal' }, {
+    tool: 'Bash', env: { FAKE_POSH_PROJECT_JSON: JSON.stringify(root) },
+  });
+  const reason = out.permissionDecisionReason;
+  assert.equal(JSON.parse(reason.match(/search tool with (\{.*?\}), or/)[1]).project, root);
+  assert.equal(JSON.parse(reason.match(/ref using (\{.*?\})\./)[1]).project, root);
+  const cli = reason.match(/or `(.+?)`, then/)[1];
+  const args = execFileSync('/bin/sh', ['-c', `posh() { printf '%s\\n' "$@"; }\n${cli}`], { encoding: 'utf8' }).trim().split('\n');
+  assert.deepEqual(args, ['search', '<symbol>', '--ref', 'gem:kamal', '--project', root]);
+});
+
 test('rejects an outer project even when POSH returns an ancestor of the current directory', () => {
   const outer = project('Gemfile.lock');
   const inner = path.join(outer, 'nested-repo');
