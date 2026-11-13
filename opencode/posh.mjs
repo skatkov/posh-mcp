@@ -6,8 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFile } from 'node:child_process';
 import { Error as ToolError } from '@opencode/plugin/promise/tool';
+import { poshRedirect, rubyProject } from '../shared/lookup-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const modeFile = path.join(
@@ -36,27 +36,13 @@ function writeMode(mode) {
   fs.writeFileSync(modeFile, mode + '\n');
 }
 
-// The home directory is excluded because a stray ~/Gemfile does not make every folder Ruby.
-function inRubyProject(start) {
-  let dir = path.resolve(start);
-  while (dir !== path.dirname(dir) && dir !== os.homedir()) {
-    const names = fs.readdirSync(dir);
-    if (names.some((name) => ['Gemfile', 'Gemfile.lock', 'gems.rb'].includes(name) || name.endsWith('.gemspec'))) {
-      return true;
-    }
-    if (names.includes('.git')) return false;
-    dir = path.dirname(dir);
-  }
-  return false;
-}
-
 const withoutMentions = (items) => items?.map(({ mention, ...item }) => item);
 
 export default {
   id: 'posh',
 
   async setup(ctx) {
-    const ruby = inRubyProject(ctx.location.directory);
+    const ruby = rubyProject(path.resolve(ctx.location.directory));
     const active = () => {
       const mode = readMode();
       return mode === 'on' || mode === 'feedback' || (mode === 'auto' && ruby);
@@ -106,7 +92,7 @@ export default {
     await ctx.session.hook('context', addRuleset);
     await ctx.session.hook('compaction', addRuleset);
 
-    // Only translate the host contract here; every lookup decision lives in Ruby.
+    // Only translate the host contract here; every lookup decision is shared.
     await ctx.tool.hook('execute.before', async (event) => {
       const tools = { read: 'Read', grep: 'Grep', glob: 'Glob', shell: 'Bash', webfetch: 'WebFetch' };
       const tool = tools[event.tool];
@@ -122,15 +108,7 @@ export default {
           session_id: `opencode-${event.sessionID}`, cwd, tool_name: tool,
           tool_input: tool === 'Read' ? { file_path: args.path } : args,
         };
-        const stdout = await new Promise((resolve, reject) => {
-          const child = execFile('ruby', [path.join(root, 'hooks/posh-lookup.rb')], {
-            cwd, timeout: 4000, killSignal: 'SIGKILL',
-          }, (error, stdout) => error ? reject(error) : resolve(stdout));
-          // A missing runtime may close stdin before the JSON write finishes.
-          child.stdin.on('error', () => {});
-          child.stdin.end(JSON.stringify(input));
-        });
-        if (stdout) reason = JSON.parse(stdout).reason;
+        reason = await poshRedirect(input);
       } catch {
         return; // Runtime, session, POSH and transport failures leave permissions alone.
       }

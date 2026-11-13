@@ -1,7 +1,6 @@
 #!/bin/sh
 # POSH lifecycle hook for Claude Code and Codex. $1 is the hook event name.
-# Plain sh because POSH only ships for macOS and Linux, and Ruby machines often
-# have no Node or jq on the PATH that hooks see.
+# Lifecycle guidance needs only sh; lookup interception additionally requires Node.
 
 event=$1
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
@@ -117,8 +116,8 @@ case $event in
     handle_command
     ;;
   PreToolUse)
-    if command -v ruby >/dev/null 2>&1; then
-      ruby "$root/hooks/posh-pre-tool-use.rb" "${2:-claude}"
+    if command -v node >/dev/null 2>&1; then
+      node "$root/hooks/posh-pre-tool-use.mjs" "${2:-claude}"
     fi
     ;;
 esac

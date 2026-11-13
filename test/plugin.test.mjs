@@ -9,6 +9,7 @@ import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Error as ToolError } from '@opencode/plugin/promise/tool';
+import { poshRedirect } from '../shared/lookup-policy.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hook = path.join(repo, 'hooks/posh-hook.sh');
@@ -113,7 +114,7 @@ async function setupOpenCode(directory, servers = {}) {
   return state;
 }
 
-async function openCodeTool(host, cwd, tool, input, { session = 's', data, env = {} } = {}) {
+async function withPolicyEnv(cwd, { data, env = {} }, run) {
   const overrides = {
     PATH: `${poshBin}:${process.env.PATH}`,
     PLUGIN_DATA: data ?? fs.mkdtempSync(path.join(tmp, 'opencode-data-')),
@@ -123,17 +124,25 @@ async function openCodeTool(host, cwd, tool, input, { session = 's', data, env =
   const previous = Object.fromEntries(Object.keys(overrides).map((key) => [key, process.env[key]]));
   Object.assign(process.env, overrides);
   try {
-    await host.hooks['execute.before']({ tool, input, sessionID: session, messageID: 'm', id: 'call', agent: 'build' });
-    return null;
-  } catch (error) {
-    assert.ok(error instanceof ToolError, `expected a host Tool.Error, got ${error}`);
-    return error.message;
+    return await run();
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
   }
+}
+
+async function openCodeTool(host, cwd, tool, input, { session = 's', ...options } = {}) {
+  return withPolicyEnv(cwd, options, async () => {
+    try {
+      await host.hooks['execute.before']({ tool, input, sessionID: session, messageID: 'm', id: 'call', agent: 'build' });
+      return null;
+    } catch (error) {
+      assert.ok(error instanceof ToolError, `expected a host Tool.Error, got ${error}`);
+      return error.message;
+    }
+  });
 }
 
 test('injects valid JSON with the ruleset and no frontmatter in a Ruby project', () => {
@@ -305,15 +314,26 @@ test('moving one session to another Ruby project gets its own redirect', () => {
   }
 });
 
-test('shared policy returns a harness-neutral reason from normalized JSON input', () => {
+test('shared policy returns a harness-neutral reason from normalized input, independent of process cwd', async () => {
   const cwd = project('Gemfile.lock');
   const payload = JSON.stringify({ cwd, session_id: 'neutral', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } });
-  const result = execFileSync('ruby', [path.join(repo, 'hooks/posh-lookup.rb')], {
-    cwd: project('package.json'), input: payload, encoding: 'utf8',
-    env: { ...process.env, PATH: `${poshBin}:${process.env.PATH}`, CLAUDE_PLUGIN_DATA: fs.mkdtempSync(path.join(tmp, 'data-')), FAKE_POSH_PROJECT_JSON: JSON.stringify(cwd) },
-  });
-  assert.deepEqual(Object.keys(JSON.parse(result)), ['reason']);
-  assert.match(JSON.parse(result).reason, /gem:kamal/);
+  assert.notEqual(process.cwd(), cwd);
+  const reason = await withPolicyEnv(cwd, {}, () => poshRedirect(JSON.parse(payload)));
+  assert.match(reason, /gem:kamal/);
+});
+
+test('a timed-out POSH lookup fails open without consuming the retry marker', async () => {
+  const cwd = project('Gemfile.lock');
+  const data = fs.mkdtempSync(path.join(tmp, 'timeout-data-'));
+  const bin = fs.mkdtempSync(path.join(tmp, 'timeout-bin-'));
+  const posh = path.join(bin, 'posh');
+  fs.writeFileSync(posh, '#!/bin/sh\nexec /bin/sleep 30\n', { mode: 0o755 });
+  const input = { cwd, session_id: 'timeout', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } };
+  const call = () => withPolicyEnv(cwd, { data, env: { PATH: bin } }, () => poshRedirect(input));
+  assert.equal(await call(), null);
+  assert.deepEqual(fs.readdirSync(data), []);
+  fs.copyFileSync(path.join(poshBin, 'posh'), posh);
+  assert.match(await call(), /gem:kamal/);
 });
 
 test('matches a gem directory with no trailing slash, as `cd <gem dir> && ...` leaves', () => {
@@ -434,15 +454,16 @@ test('POSH_HOOK_DECISION cannot grant a tool permission', () => {
   assert.equal(out.permissionDecision, 'deny');
 });
 
-test('fails open when either runtime executable is absent, without falling back to real POSH', () => {
-  const ruby = execFileSync('/bin/sh', ['-c', 'command -v ruby'], { encoding: 'utf8' }).trim();
-  for (const missing of ['ruby', 'posh']) {
+test('needs Node and POSH but not Ruby on the hook PATH', () => {
+  for (const missing of ['node', 'posh', 'ruby']) {
     const bin = fs.mkdtempSync(path.join(tmp, 'isolated-path-'));
     for (const name of ['sh', 'cat']) fs.symlinkSync(`/bin/${name}`, path.join(bin, name));
     fs.symlinkSync('/usr/bin/dirname', path.join(bin, 'dirname'));
-    if (missing !== 'ruby') fs.symlinkSync(ruby, path.join(bin, 'ruby'));
+    if (missing !== 'node') fs.symlinkSync(process.execPath, path.join(bin, 'node'));
     if (missing !== 'posh') fs.symlinkSync(path.join(poshBin, 'posh'), path.join(bin, 'posh'));
-    assert.equal(toolUse(project('Gemfile.lock'), { command: 'bundle show kamal' }, { tool: 'Bash', env: { PATH: bin } }), null);
+    const out = toolUse(project('Gemfile.lock'), { command: 'bundle show kamal' }, { tool: 'Bash', env: { PATH: bin } });
+    if (missing === 'ruby') assert.equal(out.permissionDecision, 'deny');
+    else assert.equal(out, null);
   }
 });
 
@@ -462,6 +483,57 @@ test('recognizes custom RubyGems homes without treating sibling application file
   const env = { GEM_HOME: home, GEM_PATH: home };
   assert.match(toolUse(dir, { file_path: `${home}/gems/kamal-2.12.0/lib/kamal.rb` }, { env }).permissionDecisionReason, /gem:kamal/);
   assert.equal(toolUse(dir, { file_path: `${home}/app/models/report.rb` }, { env }), null);
+});
+
+test('recognizes each exported gem home without needing a Ruby executable', () => {
+  const cwd = project('Gemfile.lock');
+  const homes = [path.join(cwd, 'custom home'), path.join(cwd, 'another-home')];
+  for (const env of [
+    { GEM_HOME: homes[0], GEM_PATH: '' },
+    { GEM_HOME: '', GEM_PATH: homes.join(path.delimiter) },
+  ]) {
+    const home = env.GEM_HOME || homes[1];
+    assert.match(toolUse(cwd, { file_path: `${home}/gems/kamal-2.12.0/lib/kamal.rb` }, { env }).permissionDecisionReason, /gem:kamal/);
+    assert.equal(toolUse(cwd, { file_path: `${home}/app/models/report.rb` }, { env }), null);
+    assert.equal(toolUse(cwd, { file_path: `${home}-sibling/gems/kamal-2.12.0/lib/kamal.rb` }, { env }), null);
+  }
+});
+
+test('recognizes standard user, XDG, distro and alternate-Ruby installation layouts', () => {
+  const cwd = project('Gemfile.lock');
+  for (const home of [
+    '/home/x/.gem/ruby/3.4.0',
+    '/home/x/.local/share/gem/ruby/4.0.0',
+    '/home/x/.gem/jruby/3.1.0',
+    '/app/vendor/bundle/truffleruby/3.3.0',
+    '/usr/share/rubygems-integration/all',
+  ]) assert.match(toolUse(cwd, { file_path: `${home}/gems/kamal-2.12.0/lib/kamal.rb` }).permissionDecisionReason, /gem:kamal/);
+});
+
+test('shell quoting preserves literal arguments without evaluating expansions or malformed commands', () => {
+  const cwd = project('Gemfile.lock');
+  for (const command of [
+    'bundle show k"am"al',
+    "bundle show 'kamal'",
+    'bundle show ka\\mal',
+    'bundle \\\nshow kamal',
+    'bundle show kamal; echo ignored',
+    'bundle show kamal\nprintf ignored',
+  ]) assert.match(toolUse(cwd, { command }, { tool: 'Bash' }).permissionDecisionReason, /gem:kamal/, command);
+  for (const command of [
+    'bundle show "kamal',
+    "bundle show 'kamal",
+    'bundle show kamal\\',
+    'bundle show ""',
+    'bundle show "$GEM"',
+    'bundle show "$(touch pwned)"',
+    'bundle show `touch pwned`',
+    'bundle show "${GEM:-kamal}"',
+    "bundle show 'kamal\n'",
+    'echo ignored; bundle show kamal',
+    'printf ignored\nbundle show kamal',
+  ]) assert.equal(toolUse(cwd, { command }, { tool: 'Bash' }), null, command);
+  assert.equal(fs.existsSync(path.join(cwd, 'pwned')), false);
 });
 
 test('leaves a bundler path that is not being read alone', () => {
@@ -559,11 +631,12 @@ test('OpenCode uses the moved session location and a shell workdir, not its plug
   assert.equal(await openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }), null);
 });
 
-test('OpenCode fails open for missing runtimes, POSH errors, unavailable sessions and unwritable state', async () => {
+test('OpenCode imports the policy without external runtimes and fails open on POSH/session/state errors', async () => {
   const cwd = project('Gemfile.lock');
   const host = await setupOpenCode(cwd);
   const call = (options) => openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }, options);
-  assert.equal(await call({ env: { PATH: poshBin } }), null);
+  assert.match(await call({ env: { PATH: poshBin } }), /gem:kamal/);
+  assert.equal(await call({ env: { PATH: tmp } }), null);
   assert.equal(await call({ env: { FAKE_POSH_RESPONSE: 'not json' } }), null);
   const data = path.join(tmp, 'opencode-state-file');
   fs.writeFileSync(data, '');
@@ -663,7 +736,7 @@ test('accepts formatted JSON but rejects the wrong library, project, and Ruby-on
 
 test('fails open on missing/unsafe sessions, malformed payloads, and unsavable markers', () => {
   const dir = project('Gemfile.lock');
-  for (const session of ['', '../../outside', 'quote"']) {
+  for (const session of ['', '../../outside', 'quote"', 's\n', 's\r\n']) {
     assert.equal(toolUse(dir, { command: 'bundle show kamal' }, { tool: 'Bash', session }), null);
   }
   for (const payload of ['not json', 'null', '{}', '{"tool_input":null}']) {
