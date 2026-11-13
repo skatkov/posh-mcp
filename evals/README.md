@@ -98,11 +98,18 @@ the agent reached for; and the gem is one POSH has a docset for.
 paths, not their contents. A matching Edit argument alone would not prove the edit succeeded.
 Six zero-call graders reject every POSH MCP tool, including unsuccessful attempts.
 
-A case failing on *read-&lt;gem&gt;-docs-from-posh* while its answer grader passes means the
-agent may have answered from memory or the web. A `posh://` match is only one indicator:
-it can appear in a search result without a read. The adoption cases also require a
-search-before-read tool order and POSH's successful `Document read` response summary.
-Neither a tool attempt nor a `license_required` response passes all these checks.
+The adoption cases require search before a read of the expected API page or registry
+guide. The *documentation-read-succeeded* regex then correlates the fixture's startup
+directory, that read's tool ID and document ref, and its successful structured result.
+An explicit `project` must equal the fixture root; omission is allowed because the
+isolated server defaults to that root. An unrelated successful read cannot satisfy a
+failed expected read, and a quoted success message is not evidence.
+
+These deterministic checks use the JSONL event shape observed in Claude Code 2.1.323:
+`system/init`, `assistant` tool calls, and `user` results with POSH's `structuredContent`.
+They fail closed if that shape changes. When updating Claude Code, inspect a retained
+trace if this indicator fails despite apparently correct behavior. Unit tests cover
+mixed results, wrong projects, mismatched IDs, failed reads and parallel result ordering.
 
 ## Validation status
 
