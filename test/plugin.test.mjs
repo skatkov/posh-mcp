@@ -446,12 +446,35 @@ test('incomplete source locator commands stay allowed', () => {
   }
 });
 
-test('interception is registered for Claude Code only', () => {
+test('Claude Code and Codex register interception through the same hook adapter', () => {
   const load = (file) => JSON.parse(fs.readFileSync(path.join(repo, file), 'utf8'));
   const claude = load('.claude-plugin/plugin.json');
   const codex = load('.codex-plugin/plugin.json');
   assert.ok(claude.hooks.some((file) => load(file).hooks.PreToolUse));
-  assert.equal(load(codex.hooks).hooks.PreToolUse, undefined);
+  assert.ok(codex.hooks.some((file) => load(file).hooks.PreToolUse));
+});
+
+test('Codex manifest command denies canonical Bash calls, never emits unsupported ask, and allows retries', () => {
+  const cwd = project('Gemfile.lock');
+  const manifest = JSON.parse(fs.readFileSync(path.join(repo, 'hooks/codex-hooks.json'), 'utf8'));
+  const group = manifest.hooks.PreToolUse[0];
+  assert.match('Bash', new RegExp(group.matcher));
+  const env = {
+    ...process.env, PLUGIN_ROOT: repo, PLUGIN_DATA: fs.mkdtempSync(path.join(tmp, 'codex-data-')),
+    POSH_HOOK_DECISION: 'ask', PATH: `${poshBin}:${process.env.PATH}`, FAKE_POSH_PROJECT_JSON: JSON.stringify(cwd),
+  };
+  delete env.CLAUDE_PLUGIN_ROOT;
+  delete env.CLAUDE_PLUGIN_DATA;
+  const call = (command) => execFileSync('sh', ['-c', group.hooks[0].command], {
+    cwd, env, encoding: 'utf8',
+    input: JSON.stringify({ session_id: '019c-codex', cwd, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }),
+  });
+  assert.equal(call('echo bundle show kamal'), '');
+  const out = JSON.parse(call('bundle show kamal')).hookSpecificOutput;
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /gem:kamal/);
+  assert.equal(call('bundle show kamal'), '');
+  assert.equal(fs.readdirSync(path.join(env.PLUGIN_DATA, 'nudged')).length, 1);
 });
 
 test('uses the current directory, not the project where the session started', () => {

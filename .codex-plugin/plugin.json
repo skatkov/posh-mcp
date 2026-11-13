@@ -12,7 +12,7 @@
   "license": "LicenseRef-POSH-Proprietary",
   "keywords": ["ruby", "rails", "documentation", "mcp"],
   "skills": "./skills/",
-  "hooks": "./hooks/claude-codex-hooks.json",
+  "hooks": ["./hooks/claude-codex-hooks.json", "./hooks/codex-hooks.json"],
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "POSH",
