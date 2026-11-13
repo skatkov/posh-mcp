@@ -42,10 +42,9 @@ export default {
   id: 'posh',
 
   async setup(ctx) {
-    const ruby = rubyProject(path.resolve(ctx.location.directory));
-    const active = () => {
-      const mode = readMode();
-      return mode === 'on' || mode === 'feedback' || (mode === 'auto' && ruby);
+    const sessionDirectory = async (sessionID) => {
+      const session = await ctx.session.get({ sessionID });
+      return fs.realpathSync(session.location.directory);
     };
 
     // A server the user configured themselves wins.
@@ -84,9 +83,17 @@ export default {
     });
 
     // Compaction is a separate request kind and would otherwise lose the ruleset.
-    const addRuleset = (event) => {
-      if (!active()) return;
-      const text = readMode() === 'feedback' ? ruleset + '\n\n' + feedback : ruleset;
+    const addRuleset = async (event) => {
+      const mode = readMode();
+      if (mode === 'off') return;
+      if (mode === 'auto') {
+        try {
+          if (!rubyProject(await sessionDirectory(event.sessionID))) return;
+        } catch {
+          return; // An unavailable session must not interrupt a model request.
+        }
+      }
+      const text = mode === 'feedback' ? ruleset + '\n\n' + feedback : ruleset;
       event.system.push({ type: 'text', text });
     };
     await ctx.session.hook('context', addRuleset);
@@ -99,11 +106,11 @@ export default {
       if (!tool || !event.input || typeof event.input !== 'object' || Array.isArray(event.input)) return;
       let reason;
       try {
-        const session = await ctx.session.get({ sessionID: event.sessionID });
+        const directory = await sessionDirectory(event.sessionID);
         const args = event.input;
         const cwd = tool === 'Bash' && typeof args.workdir === 'string'
-          ? path.resolve(session.location.directory, args.workdir)
-          : session.location.directory;
+          ? path.resolve(directory, args.workdir)
+          : directory;
         const input = {
           session_id: `opencode-${event.sessionID}`, cwd, tool_name: tool,
           tool_input: tool === 'Read' ? { file_path: args.path } : args,

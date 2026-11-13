@@ -104,9 +104,9 @@ async function setupOpenCode(directory, servers = {}) {
     },
     tool: { hook: (name, fn) => { state.hooks[name] = fn; } },
   });
-  state.system = (kind = 'context') => {
-    const event = { system: [] };
-    state.hooks[kind](event);
+  state.system = async (kind = 'context') => {
+    const event = { sessionID: 's', system: [] };
+    await state.hooks[kind](event);
     return event.system.map((part) => part.text).join('\n');
   };
   state.run = (text) => state.command.execute({ sessionID: 's', prompt: { text }, delivery: 'steer' });
@@ -163,7 +163,8 @@ for (const marker of ['Gemfile', 'gems.rb', 'thing.gemspec']) {
     const sub = path.join(dir, 'app/models');
     fs.mkdirSync(sub, { recursive: true });
     assert.ok(runHook('SessionStart', sub));
-    assert.ok((await setupOpenCode(sub)).system().includes(MARKER));
+    const host = await setupOpenCode(sub);
+    assert.ok((await host.system()).includes(MARKER));
   });
 }
 
@@ -173,7 +174,8 @@ test('auto stays silent outside Ruby projects and does not cross a git root', as
   fs.mkdirSync(path.join(inner, '.git'), { recursive: true });
   for (const dir of [project('package.json'), inner]) {
     assert.equal(runHook('SessionStart', dir), null);
-    assert.equal((await setupOpenCode(dir)).system(), '');
+    const host = await setupOpenCode(dir);
+    assert.equal(await host.system(), '');
   }
 });
 
@@ -193,17 +195,18 @@ test('hook commands switch modes and the OpenCode plugin honours the same file',
   const off = runHook('UserPromptSubmit', ruby, prompt('/posh off'));
   assert.match(off.additionalContext, /POSH is now off/);
   assert.equal(runHook('SessionStart', ruby), null);
-  assert.equal((await setupOpenCode(ruby)).system(), '');
+  const hostOnRuby = await setupOpenCode(ruby);
+  assert.equal(await hostOnRuby.system(), '');
 
   const on = runHook('UserPromptSubmit', other, prompt('/posh'));
   assert.ok(on.additionalContext.includes(MARKER));
   assert.ok(runHook('SessionStart', other));
-  assert.ok(hostOnOther.system().includes(MARKER));
+  assert.ok((await hostOnOther.system()).includes(MARKER));
 
   const auto = runHook('UserPromptSubmit', other, prompt('$posh:posh auto'));
   assert.match(auto.additionalContext, /This is not one/);
   assert.equal(fs.existsSync(modeFile), false);
-  assert.equal(hostOnOther.system(), '');
+  assert.equal(await hostOnOther.system(), '');
 });
 
 test('feedback mode adds the evaluation rules on top of on, everywhere, in both hosts', async () => {
@@ -212,7 +215,7 @@ test('feedback mode adds the evaluation rules on top of on, everywhere, in both 
 
   const switched = runHook('UserPromptSubmit', other, prompt('/posh feedback'));
   assert.match(switched.additionalContext, /POSH feedback mode is now on/);
-  for (const text of [switched.additionalContext, runHook('SessionStart', other).additionalContext, host.system(), host.system('compaction')]) {
+  for (const text of [switched.additionalContext, runHook('SessionStart', other).additionalContext, await host.system(), await host.system('compaction')]) {
     assert.ok(text.includes(MARKER));
     assert.ok(text.includes(FEEDBACK));
   }
@@ -221,7 +224,7 @@ test('feedback mode adds the evaluation rules on top of on, everywhere, in both 
   assert.match(on.additionalContext, /Stop adding the POSH feedback section/);
   assert.ok(!on.additionalContext.includes(FEEDBACK));
   assert.ok(!runHook('SessionStart', other).additionalContext.includes(FEEDBACK));
-  assert.ok(!host.system().includes(FEEDBACK));
+  assert.ok(!(await host.system()).includes(FEEDBACK));
   assert.doesNotMatch(runHook('UserPromptSubmit', other, prompt('/posh on')).additionalContext, /Stop adding/);
 });
 
@@ -230,7 +233,7 @@ test('OpenCode /posh feedback persists the mode', async () => {
   await host.run('feedback');
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'feedback');
   assert.match(host.sent.at(-1).text, /POSH feedback mode is now on/);
-  assert.ok(host.system().includes(FEEDBACK));
+  assert.ok((await host.system()).includes(FEEDBACK));
 });
 
 test('/posh auto still sees a project whose only marker is a gemspec', () => {
@@ -254,8 +257,8 @@ test('shell metacharacters in a prompt are inert', () => {
 
 test('OpenCode adds the ruleset on model and compaction requests', async () => {
   const host = await setupOpenCode(project('Gemfile'));
-  assert.ok(host.system('context').includes(MARKER));
-  assert.ok(host.system('compaction').includes(MARKER));
+  assert.ok((await host.system('context')).includes(MARKER));
+  assert.ok((await host.system('compaction')).includes(MARKER));
 });
 
 test('OpenCode registers the MCP server but keeps a user-configured one', async () => {
@@ -270,7 +273,7 @@ test('OpenCode /posh persists the mode before the turn and passes other text thr
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'off');
   assert.match(host.sent.at(-1).text, /POSH is now off/);
   await host.run('');
-  assert.ok(host.system().includes(MARKER));
+  assert.ok((await host.system()).includes(MARKER));
   await host.run('auto');
   assert.equal(fs.existsSync(modeFile), false);
   await host.run('how does has_many work');
@@ -624,11 +627,21 @@ test('OpenCode uses the moved session location and a shell workdir, not its plug
   const nested = path.join(cwd, 'app/models');
   fs.mkdirSync(nested, { recursive: true });
   const host = await setupOpenCode(original);
+  assert.equal(await host.system(), '');
   host.directory = nested;
+  for (const kind of ['context', 'compaction']) {
+    assert.ok((await host.system(kind)).includes(MARKER));
+  }
   assert.match(await openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }), /gem:kamal/);
   host.directory = original;
+  for (const kind of ['context', 'compaction']) assert.equal(await host.system(kind), '');
   assert.match(await openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal', workdir: nested }), /gem:kamal/);
   assert.equal(await openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }), null);
+  const rubyHost = await setupOpenCode(cwd);
+  rubyHost.directory = original;
+  assert.equal(await rubyHost.system(), '');
+  rubyHost.directory = nested;
+  assert.ok((await rubyHost.system()).includes(MARKER));
 });
 
 test('OpenCode imports the policy without external runtimes and fails open on POSH/session/state errors', async () => {
@@ -643,6 +656,8 @@ test('OpenCode imports the policy without external runtimes and fails open on PO
   assert.equal(await call({ data }), null);
   host.sessionError = true;
   assert.equal(await call(), null);
+  assert.equal(await host.system(), '');
+  assert.equal(await host.system('compaction'), '');
 });
 
 test('OpenCode honors off, project boundaries and exact docset project matching', async () => {
