@@ -22,13 +22,6 @@ graders:
       namespace bindings is appended as a trailing argument. Both examples are consistent with
       that signature.
     weight: 2
-  - type: tool_order
-    name: searched-before-reading
-    before: mcp__plugin_posh_docs__search
-    after:
-      tool: mcp__plugin_posh_docs__read
-      input_match: '"ref"\s*:\s*"(?:posh://)?gem:nokogiri/rdoc/Nokogiri/XML/Searchable\.md(?:#method-i-css)?"'
-    arm: with-only
   - type: regex
     name: did-not-fetch-the-source-from-github
     target: trace

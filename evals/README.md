@@ -106,8 +106,10 @@ Its fixture's internal CLI preflight is not a model-issued lookup. A determinist
 check also proves that a known-gem source read is denied in that same fixture while
 the README read is allowed.
 
-The adoption cases require search before a read of the expected API page or registry
-guide. `check-evidence.mjs` parses JSONL records with `JSON.parse`, matches read calls
+The adoption cases require a successful read of the expected API page or registry
+guide, not a particular discovery sequence. `search`, `list`, `outline`, and previously
+returned refs are all valid ways to find it; no redundant search call is required.
+`check-evidence.mjs` parses JSONL records with `JSON.parse`, matches read calls
 and result blocks by tool ID, and verifies the project, returned ref and nonempty
 document content. Expected refs live once in `expected-reads.json`; `null` means a
 control case has no required read. JSON field order does not matter.

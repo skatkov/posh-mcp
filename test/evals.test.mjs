@@ -107,8 +107,7 @@ test('read evidence expectations cover the suite and adoption indicators do not 
   assert.deepEqual(Object.keys(expectedReads).sort(), names.sort());
   for (const spec of cases.filter((item) => item.tags.includes('adoption') || item.tags.includes('interception'))) {
     assert.equal(typeof expectedReads[spec.name], 'string');
-    const order = spec.graders.find((grader) => grader.type === 'tool_order');
-    assert.equal(new RegExp(order.after.input_match).test(JSON.stringify({ ref: expectedReads[spec.name] })), true);
+    assert.equal(spec.graders.some((grader) => grader.type === 'tool_order'), false);
     assert.ok(spec.graders.some((grader) => grader.type === 'llm' && grader.arm !== 'with-only'));
     assert.ok(spec.graders.filter((grader) => grader.type !== 'llm').every((grader) => grader.arm === 'with-only'));
   }

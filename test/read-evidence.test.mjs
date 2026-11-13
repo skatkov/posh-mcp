@@ -63,6 +63,21 @@ test('JSON key order and MCP text-block envelopes do not affect evidence', () =>
   assert.equal(hasSuccessfulRead(reordered, ref), true);
 });
 
+test('list and outline discovery can lead to verified reads without a search call', () => {
+  for (const ref of Object.values(expectedReads).filter(Boolean)) {
+    const discovery = [
+      ['docsets', {}],
+      ['list', { ref: ref.split('/').slice(0, 2).join('/') }],
+      ['outline', { ref }],
+    ].map(([tool, input]) => ({
+      type: 'assistant', message: { content: [{
+        type: 'tool_use', id: tool, name: `mcp__plugin_posh_docs__${tool}`, input,
+      }] },
+    }));
+    assert.equal(hasSuccessfulRead(trace(...discovery, call('read', ref), result('read', ref)), ref), true);
+  }
+});
+
 test('results cannot borrow success from metadata or a sibling result block', () => {
   const ref = expectedReads['activerecord-api'];
   const response = result('read', ref, false);

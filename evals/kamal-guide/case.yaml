@@ -23,10 +23,3 @@ graders:
       that the password entry names an environment variable or secret (for example
       KAMAL_REGISTRY_PASSWORD) rather than holding the password itself.
     weight: 2
-  - type: tool_order
-    name: searched-before-reading
-    before: mcp__plugin_posh_docs__search
-    after:
-      tool: mcp__plugin_posh_docs__read
-      input_match: '"ref"\s*:\s*"(?:posh://)?gem:kamal/guide/docs/configuration/docker-registry\.md(?:#[^"]+)?"'
-    arm: with-only
