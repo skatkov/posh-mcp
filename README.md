@@ -151,7 +151,7 @@ text, and atomic retry markers. The adapters only translate their host contracts
   imports the policy directly, and turns its reason into the host SDK's `Tool.Error`.
 
 The policy uses Node's standard library, with no runtime parsing dependencies or
-Ruby subprocesses. Claude/Codex interception requires Node on the hook's PATH.
+Ruby subprocesses. Claude/Codex interception requires Node 18.3+ on the hook's PATH.
 Missing Node, missing or failing POSH, malformed responses, and unwritable
 session state all leave normal tool permissions unchanged. A retry of the
 same lookup goes through: this is an adoption nudge, not a security boundary
@@ -160,6 +160,9 @@ repository names as gem-name hints; it does not cover every repository or
 arbitrary shell program.
 Shell detection recognizes literal-leading commands (optionally `bundle exec`),
 not executable-looking words printed as arguments; compound-command tails are skipped.
+Known command options are parsed before classifying operands; search patterns,
+scripts, request bodies and output filenames are not lookup targets. Unknown
+option forms are left alone rather than guessing their meaning.
 Filesystem detection recognizes Bundler/RubyGems installation layouts and custom
 gem homes exported through `GEM_HOME` or `GEM_PATH`; a first-party directory merely
 named `gems` is left alone. It does not run `Gem.path`, so arbitrary unexported

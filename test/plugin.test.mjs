@@ -539,6 +539,54 @@ test('shell quoting preserves literal arguments without evaluating expansions or
   assert.equal(fs.existsSync(path.join(cwd, 'pwned')), false);
 });
 
+test('shell lookup targets exclude patterns, scripts, option values and request bodies', () => {
+  const cwd = project('Gemfile.lock');
+  const source = `${gemDir('kamal', '2.12.0')}/lib/kamal.rb`;
+  const url = 'https://rubygems.org/gems/kamal';
+  const data = fs.mkdtempSync(path.join(tmp, 'operand-data-'));
+  for (const command of [
+    `grep -F '${source}' README.md`,
+    `grep -e '${source}' README.md`,
+    `rg --glob '${source}' needle app`,
+    `rg -g'${source}' needle app`,
+    `sed -n '${source}' README.md`,
+    `awk '${source}' README.md`,
+    `awk -v source='${source}' 'print source' README.md`,
+    `find app -path '${source}'`,
+    `ls --ignore '${source}' app`,
+    `curl --data '${url}' https://example.com`,
+    `curl -o '${url}' https://example.com`,
+    `wget --post-data='${url}' https://example.com`,
+    `cat --unknown-option '${source}'`,
+  ]) {
+    assert.equal(toolUse(cwd, { command }, { tool: 'Bash', data }), null, command);
+  }
+  // False positives must not consume the real lookup's once-only marker.
+  assert.match(toolUse(cwd, { command: `cat '${source}'` }, { tool: 'Bash', data }).permissionDecisionReason, /gem:kamal/);
+});
+
+test('shell operands still identify source files and fetched URLs after known options', () => {
+  const cwd = project('Gemfile.lock');
+  const source = `${gemDir('kamal', '2.12.0')}/lib/kamal.rb`;
+  for (const command of [
+    `grep -F needle '${source}'`,
+    `grep -e needle '${source}'`,
+    `grep --regexp=needle '${source}'`,
+    `rg -g '*.rb' needle '${source}'`,
+    `sed -n '1,30p' '${source}'`,
+    `sed -e 's/old/new/' '${source}'`,
+    `awk -F : '{ print $1 }' '${source}'`,
+    `find '${source}' -name '*.rb'`,
+    `head -n 20 '${source}'`,
+    `tail --lines=20 '${source}'`,
+    `cat -- '${source}'`,
+    'curl -sSLo k.gem https://rubygems.org/downloads/kamal-2.12.0.gem',
+    'wget -q -O k.gem https://rubygems.org/downloads/kamal-2.12.0.gem',
+  ]) {
+    assert.match(toolUse(cwd, { command }, { tool: 'Bash' }).permissionDecisionReason, /gem:kamal/, command);
+  }
+});
+
 test('leaves a bundler path that is not being read alone', () => {
   const dir = project('Gemfile.lock');
   assert.equal(toolUse(dir, { command: 'bundle config set --local path vendor/bundle' }, { tool: 'Bash' }), null);
