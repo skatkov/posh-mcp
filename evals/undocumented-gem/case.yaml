@@ -1,0 +1,28 @@
+schema_version: "1.1"
+name: undocumented-gem
+description: >
+  The guard. widget_press is locked but has no docset, exactly like this user's geneva_drive_admin
+  and the git-sourced rdoc. POSH cannot answer, so reading the gem's source must still work:
+  a hook that blocked it would make gem work impossible and get the plugin turned off.
+tags: [fallback, guard]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    What does WidgetPress::Press#squeeze return? Answer in one sentence.
+  max_turns: 12
+  timeout_seconds: 300
+  allowed_tools: [Read, Grep, Glob, WebFetch, mcp__plugin_posh_docs]
+runs: 3
+graders:
+  - type: llm
+    name: answers-from-the-gem-source
+    criteria: >
+      Says it returns a count of the widgets whose temperature is above 40. Does not report
+      being blocked, and does not ask the user to run anything before answering.
+    weight: 2
+  - type: tool_used
+    name: reached-the-source
+    tool: Read
+    input_match: 'gems/widget_press-0\.1\.0/lib/widget_press\.rb'
+    weight: 1
