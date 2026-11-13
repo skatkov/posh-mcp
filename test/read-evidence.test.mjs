@@ -111,6 +111,11 @@ test('report checker requires complete runs, retained traces and matching read e
     } }],
   };
   assert.deepEqual(checkReport(report), { checked: 1, failures: [] });
+  report.cases[0].runsPerCase = 3; // Claude Code 2.1.323 retains this default under --runs 1.
+  assert.match(checkReport(report).failures.join('\n'), /incomplete run count/);
+  assert.deepEqual(checkReport(report, 1), { checked: 1, failures: [] });
+  assert.throws(() => checkReport(report, 0), /positive integer/);
+  report.cases[0].runsPerCase = 1;
   assert.throws(() => checkReport({ ...report, partial: true }), /complete/);
   assert.throws(() => checkReport({ ...report, suite: {} }), /complete/);
   report.cases[0].arms.without = [];
@@ -135,6 +140,11 @@ test('CLI exits nonzero when evidence is missing and succeeds for a verified rea
   fs.writeFileSync(reportPath, JSON.stringify(report));
   fs.writeFileSync(tracePath, trace(call('read', ref), result('read', ref)));
   assert.equal(spawnSync(process.execPath, [checker, reportPath]).status, 0);
+  report.cases[0].runsPerCase = 3;
+  fs.writeFileSync(reportPath, JSON.stringify(report));
+  assert.equal(spawnSync(process.execPath, [checker, reportPath, '--runs', '1']).status, 0);
+  assert.equal(spawnSync(process.execPath, [checker, reportPath, '--runs', '0']).status, 1);
+  assert.equal(spawnSync(process.execPath, [checker, reportPath, '--runs']).status, 1);
   fs.writeFileSync(tracePath, '');
   assert.equal(spawnSync(process.execPath, [checker, reportPath]).status, 1);
   assert.equal(spawnSync(process.execPath, [checker]).status, 1);

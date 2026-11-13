@@ -61,7 +61,10 @@ export function hasSuccessfulRead(trace, expected) {
   return false;
 }
 
-export function checkReport(report) {
+export function checkReport(report, runsOverride) {
+  if (runsOverride !== undefined && (!Number.isInteger(runsOverride) || runsOverride < 1)) {
+    throw new Error('--runs must be a positive integer, matching the eval command');
+  }
   if (!report || report.schemaVersion !== 1 || report.partial !== false ||
       !Array.isArray(report.cases) || !report.cases.length ||
       !['none', 'with-without'].includes(report.suite?.ablation)) {
@@ -76,7 +79,7 @@ export function checkReport(report) {
     }
     for (const arm of arms) {
       const runs = spec.arms?.[arm];
-      if (!Array.isArray(runs) || runs.length !== spec.runsPerCase) {
+      if (!Array.isArray(runs) || runs.length !== (runsOverride ?? spec.runsPerCase)) {
         failures.push(`${spec.name} [${arm}]: incomplete run count`);
         continue;
       }
@@ -104,8 +107,11 @@ export function checkReport(report) {
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
   try {
-    if (process.argv.length !== 3) throw new Error('Usage: node evals/check-evidence.mjs REPORT.json (run evals with --keep-temp)');
-    const { checked, failures } = checkReport(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')));
+    const [reportPath, flag, count, ...extra] = process.argv.slice(2);
+    if (!reportPath || (flag !== undefined && (flag !== '--runs' || count === undefined)) || extra.length) {
+      throw new Error('Usage: node evals/check-evidence.mjs REPORT.json [--runs N] (run evals with --keep-temp)');
+    }
+    const { checked, failures } = checkReport(JSON.parse(fs.readFileSync(reportPath, 'utf8')), flag ? Number(count) : undefined);
     for (const failure of failures) console.error(failure);
     console.log(`POSH read evidence: ${checked} run(s) checked, ${failures.length} failure(s)`);
     process.exitCode = failures.length ? 1 : 0;
