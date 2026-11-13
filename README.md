@@ -146,6 +146,9 @@ same lookup goes through: this is an adoption nudge, not a security boundary
 or a ban on implementation-level source inspection. GitHub matching uses
 repository names as gem-name hints; it does not cover every repository or
 arbitrary shell program. Codex and OpenCode interception are not enabled.
+Filesystem detection is limited to Bundler/RubyGems installation layouts and the
+current Ruby's gem homes; a first-party directory merely named `gems` is left alone.
+Web lookups use the actual URL host and path, not embedded links in a query or fragment.
 
 Set `POSH_HOOK_DECISION=ask` to be asked instead of blocked, which is the
 gentler setting while trying this out. Session markers live in the plugin's

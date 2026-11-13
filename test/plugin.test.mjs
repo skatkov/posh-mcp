@@ -289,7 +289,8 @@ for (const [name, tool, tool_input] of [
   ['rubydoc.info', 'WebFetch', { url: 'https://rubydoc.info/gems/kamal/Kamal' }],
   ['vendor/bundle source', 'Read', { file_path: '/app/vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib/kamal.rb' }],
   ['relative vendored source', 'Grep', { path: 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib', pattern: 'registry' }],
-  ['a source glob', 'Glob', { pattern: '**/gems/kamal-2.12.0/lib/**/*.rb' }],
+  ['a source glob', 'Glob', { pattern: '**/vendor/bundle/**/gems/kamal-2.12.0/lib/**/*.rb' }],
+  ['a quoted source locator', 'Bash', { command: 'bundle show "kamal"' }],
   ['a raw GitHub URL', 'WebFetch', { url: 'https://raw.githubusercontent.com/basecamp/kamal/v2.12.0/README.md' }],
 ]) {
   test(`intercepts ${name}`, () => {
@@ -314,6 +315,15 @@ for (const [name, tool, tool_input] of [
   ['a gem with no local docset', 'Bash', { command: `ls ${gemDir('geneva_drive_admin', '0.6.0')}/lib` }],
   ['a gem that is not in this project', 'Read', { file_path: `${gemDir('sinatra', '4.1.1')}/lib/sinatra.rb` }],
   ['application code', 'Read', { file_path: '/home/x/app/models/library.rb' }],
+  ['first-party gem code', 'Read', { file_path: '/repo/gems/payments/lib/payments.rb' }],
+  ['first-party gem search', 'Grep', { path: 'gems/payments', pattern: 'def charge' }],
+  ['a versioned first-party gem', 'Read', { file_path: '/repo/gems/kamal-2.12.0/lib/kamal.rb' }],
+  ['an embedded documentation URL', 'WebFetch', { url: 'https://example.com/?next=https://rubygems.org/gems/kamal' }],
+  ['a documentation URL in a fragment', 'WebFetch', { url: 'https://example.com/#https://guides.rubyonrails.org/' }],
+  ['a lookalike documentation host', 'WebFetch', { url: 'https://rubygems.org.example.com/gems/kamal' }],
+  ['a documentation URL in shell output', 'Bash', { command: 'echo https://rubygems.org/gems/kamal' }],
+  ['a source locator in shell output', 'Bash', { command: 'echo "bundle show kamal"' }],
+  ['a normalized path outside vendor/bundle', 'Read', { file_path: '/repo/vendor/bundle/../../app/models/report.rb' }],
   ['an ordinary command', 'Bash', { command: 'bin/rails test test/models/library_test.rb' }],
   ['a source path in a Bash description', 'Bash', { command: 'pwd', description: `Looking for ${gemDir('kamal', '2.12.0')}` }],
   ['a source path in a search pattern', 'Grep', { pattern: gemDir('kamal', '2.12.0'), path: 'app' }],
@@ -371,10 +381,20 @@ test('fails open when either runtime executable is absent, without falling back 
 
 test('redirects a search of the whole gem tree, where no single gem is named', () => {
   const dir = project('Gemfile.lock');
-  const out = toolUse(dir, { pattern: 'def update_all', path: `${dir}/vendor/bundle` }, { tool: 'Grep' });
-  assert.equal(out.permissionDecision, 'deny');
-  assert.match(out.permissionDecisionReason, /the installed source of the gems this project locks/);
-  assert.match(out.permissionDecisionReason, /posh search '<symbol>'/);
+  for (const root of [`${dir}/vendor/bundle`, '/opt/ruby/lib/ruby/gems', '/var/lib/gems/3.4.0']) {
+    const out = toolUse(dir, { pattern: 'def update_all', path: root }, { tool: 'Grep' });
+    assert.equal(out.permissionDecision, 'deny');
+    assert.match(out.permissionDecisionReason, /the installed source of the gems this project locks/);
+    assert.match(out.permissionDecisionReason, /posh search '<symbol>'/);
+  }
+});
+
+test('recognizes custom RubyGems homes without treating sibling application files as gems', () => {
+  const dir = project('Gemfile.lock');
+  const home = path.join(dir, 'custom-gem-home');
+  const env = { GEM_HOME: home, GEM_PATH: home };
+  assert.match(toolUse(dir, { file_path: `${home}/gems/kamal-2.12.0/lib/kamal.rb` }, { env }).permissionDecisionReason, /gem:kamal/);
+  assert.equal(toolUse(dir, { file_path: `${home}/app/models/report.rb` }, { env }), null);
 });
 
 test('leaves a bundler path that is not being read alone', () => {
