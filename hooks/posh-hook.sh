@@ -1,7 +1,6 @@
 #!/bin/sh
 # POSH lifecycle hook for Claude Code and Codex. $1 is the hook event name.
-# Plain sh because POSH only ships for macOS and Linux, and Ruby machines often
-# have no Node or jq on the PATH that hooks see.
+# Lifecycle guidance needs only sh; lookup interception additionally requires Node.
 
 event=$1
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
@@ -17,7 +16,7 @@ mode() {
 }
 
 # $HOME is excluded because a stray ~/Gemfile does not make every folder Ruby.
-in_ruby_project() {
+ruby_project() {
   dir=${CLAUDE_PROJECT_DIR:-$PWD}
   while [ "$dir" != / ] && [ "$dir" != "$HOME" ]; do
     for marker in "$dir"/Gemfile "$dir"/Gemfile.lock "$dir"/gems.rb "$dir"/*.gemspec; do
@@ -33,7 +32,7 @@ active() {
   case $(mode) in
     on | feedback) return 0 ;;
     off) return 1 ;;
-    *) in_ruby_project ;;
+    *) ruby_project ;;
   esac
 }
 
@@ -91,7 +90,7 @@ $(ruleset)"
       ;;
     auto)
       rm -f "$mode_file"
-      if in_ruby_project; then
+      if ruby_project; then
         emit "POSH is now on for Ruby projects only, which includes this one.$stop_feedback Confirm in one short line.
 
 $(ruleset)"
@@ -108,6 +107,11 @@ case $event in
     ;;
   UserPromptSubmit)
     handle_command
+    ;;
+  PreToolUse)
+    if command -v node >/dev/null 2>&1; then
+      node "$root/hooks/posh-pre-tool-use.mjs" "${2:-claude}"
+    fi
     ;;
 esac
 exit 0

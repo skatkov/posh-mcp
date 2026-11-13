@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep|Glob|Bash|WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${PLUGIN_ROOT}/hooks/posh-hook.sh\" PreToolUse codex",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 {
   "name": "posh",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Makes Codex check POSH documentation for the project's exact Ruby and gem versions. Requires POSH to be installed and activated.",
   "author": {
     "name": "KROONI B.V.",
@@ -12,7 +12,7 @@
   "license": "LicenseRef-POSH-Proprietary",
   "keywords": ["ruby", "rails", "documentation", "mcp"],
   "skills": "./skills/",
-  "hooks": "./hooks/claude-codex-hooks.json",
+  "hooks": ["./hooks/claude-codex-hooks.json", "./hooks/codex-hooks.json"],
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "POSH",

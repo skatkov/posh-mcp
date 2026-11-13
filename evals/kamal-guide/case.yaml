@@ -1,0 +1,25 @@
+schema_version: "1.1"
+name: kamal-guide
+description: >
+  A configuration question whose answer lives in a guide, not in API docs. Observed path:
+  reading kamal's installed source (6 calls) and fetching project READMEs over HTTP.
+tags: [adoption, guide]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    I need to deploy this app to a private registry instead of Docker Hub, using the Kamal
+    version this project locks. Which config keys do I set, and how do I keep the password
+    out of the config file? Quote the YAML.
+  max_turns: 12
+  timeout_seconds: 300
+  allowed_tools: [Read, Grep, Glob, WebFetch, mcp__plugin_posh_docs]
+runs: 3
+graders:
+  - type: llm
+    name: names-the-registry-keys
+    criteria: >
+      Shows a registry block in deploy.yml with server, username and password, and explains
+      that the password entry names an environment variable or secret (for example
+      KAMAL_REGISTRY_PASSWORD) rather than holding the password itself.
+    weight: 2

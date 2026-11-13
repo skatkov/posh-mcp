@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { Error as ToolError } from '@opencode/plugin/promise/tool';
+import { poshRedirect, rubyProject } from '../shared/lookup-policy.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const modeFile = path.join(
@@ -34,30 +36,15 @@ function writeMode(mode) {
   fs.writeFileSync(modeFile, mode + '\n');
 }
 
-// The home directory is excluded because a stray ~/Gemfile does not make every folder Ruby.
-function inRubyProject(start) {
-  let dir = path.resolve(start);
-  while (dir !== path.dirname(dir) && dir !== os.homedir()) {
-    const names = fs.readdirSync(dir);
-    if (names.some((name) => ['Gemfile', 'Gemfile.lock', 'gems.rb'].includes(name) || name.endsWith('.gemspec'))) {
-      return true;
-    }
-    if (names.includes('.git')) return false;
-    dir = path.dirname(dir);
-  }
-  return false;
-}
-
 const withoutMentions = (items) => items?.map(({ mention, ...item }) => item);
 
 export default {
   id: 'posh',
 
   async setup(ctx) {
-    const ruby = inRubyProject(ctx.location.directory);
-    const active = () => {
-      const mode = readMode();
-      return mode === 'on' || mode === 'feedback' || (mode === 'auto' && ruby);
+    const sessionDirectory = async (sessionID) => {
+      const session = await ctx.session.get({ sessionID });
+      return fs.realpathSync(session.location.directory);
     };
 
     // A server the user configured themselves wins.
@@ -96,12 +83,43 @@ export default {
     });
 
     // Compaction is a separate request kind and would otherwise lose the ruleset.
-    const addRuleset = (event) => {
-      if (!active()) return;
-      const text = readMode() === 'feedback' ? ruleset + '\n\n' + feedback : ruleset;
+    const addRuleset = async (event) => {
+      const mode = readMode();
+      if (mode === 'off') return;
+      if (mode === 'auto') {
+        try {
+          if (!rubyProject(await sessionDirectory(event.sessionID))) return;
+        } catch {
+          return; // An unavailable session must not interrupt a model request.
+        }
+      }
+      const text = mode === 'feedback' ? ruleset + '\n\n' + feedback : ruleset;
       event.system.push({ type: 'text', text });
     };
     await ctx.session.hook('context', addRuleset);
     await ctx.session.hook('compaction', addRuleset);
+
+    // Only translate the host contract here; every lookup decision is shared.
+    await ctx.tool.hook('execute.before', async (event) => {
+      const tools = { read: 'Read', grep: 'Grep', glob: 'Glob', shell: 'Bash', webfetch: 'WebFetch' };
+      const tool = tools[event.tool];
+      if (!tool || !event.input || typeof event.input !== 'object' || Array.isArray(event.input)) return;
+      let reason;
+      try {
+        const directory = await sessionDirectory(event.sessionID);
+        const args = event.input;
+        const cwd = tool === 'Bash' && typeof args.workdir === 'string'
+          ? path.resolve(directory, args.workdir)
+          : directory;
+        const input = {
+          session_id: `opencode-${event.sessionID}`, cwd, tool_name: tool,
+          tool_input: tool === 'Read' ? { file_path: args.path } : args,
+        };
+        reason = await poshRedirect(input);
+      } catch {
+        return; // Runtime, session, POSH and transport failures leave permissions alone.
+      }
+      if (typeof reason === 'string' && reason) throw new ToolError({ message: reason });
+    });
   },
 };
