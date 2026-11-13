@@ -23,7 +23,7 @@ for (const kind of ['share', 'state']) {
   fs.mkdirSync(path.join(real, '.local', kind, 'posh'), { recursive: true });
 }
 fs.writeFileSync(path.join(bin, 'getent'), `#!/bin/sh\nprintf '%s\\n' 'x:x:0:0::${real}:/bin/sh'\n`, { mode: 0o755 });
-fs.writeFileSync(path.join(bin, 'posh'), '#!/bin/sh\nprintf "%s" "$FAKE_POSH_DOCSETS"\n', { mode: 0o755 });
+fs.writeFileSync(path.join(bin, 'posh'), '#!/bin/sh\n[ -d "$HOME/.local/share/posh" ] && [ -d "$HOME/.local/state/posh" ] || exit 1\nprintf "%s" "$FAKE_POSH_DOCSETS"\n', { mode: 0o755 });
 const data = [
   { ref: 'gem:activerecord', version: '8.1.4.1', kinds: ['rdoc'] },
   { ref: 'gem:kamal', version: '2.12.0', kinds: ['guide'] },
@@ -33,12 +33,16 @@ const data = [
 
 function scaffold(name, { docs = data, home = fs.mkdtempSync(path.join(tmp, 'home-')) } = {}) {
   const cwd = fs.mkdtempSync(path.join(tmp, 'workspace-'));
+  const env = {
+    ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`,
+    XDG_CONFIG_HOME: path.join(home, '.config'), XDG_DATA_HOME: path.join(home, '.local/share'), XDG_STATE_HOME: path.join(home, '.local/state'),
+    CLAUDE_PROJECT_DIR: cwd, CLAUDE_PLUGIN_DATA: path.join(home, 'plugin-data'),
+    FAKE_POSH_DOCSETS: JSON.stringify({ ok: true, project_path: cwd, data: docs }),
+  };
   execFileSync('sh', [path.join(evals, name, 'scaffold.sh')], {
-    cwd,
-    env: { ...process.env, HOME: home, PATH: `${bin}:${process.env.PATH}`, FAKE_POSH_DOCSETS: JSON.stringify({ ok: true, project_path: cwd, data: docs }) },
-    stdio: 'pipe',
+    cwd, env, stdio: 'pipe',
   });
-  return { cwd, home };
+  return { cwd, home, env };
 }
 
 test('all six evals have runnable scaffolds and stay out of the operator home', () => {
@@ -46,8 +50,8 @@ test('all six evals have runnable scaffolds and stay out of the operator home', 
   for (const spec of cases) {
     const { cwd, home } = scaffold(spec.name);
     assert.ok(fs.existsSync(path.join(cwd, 'Gemfile.lock')));
-    if (spec.name !== 'typo-control') {
-      assert.equal(fs.realpathSync(path.join(home, '.local/share/posh')), path.join(real, '.local/share/posh'));
+    for (const kind of ['share', 'state']) {
+      assert.equal(fs.realpathSync(path.join(home, `.local/${kind}/posh`)), path.join(real, `.local/${kind}/posh`));
     }
   }
   assert.deepEqual(fs.readdirSync(path.join(real, '.local/share/posh')), []);
@@ -56,12 +60,24 @@ test('all six evals have runnable scaffolds and stay out of the operator home', 
 
 test('scaffold preflight fails on missing or wrong-version docs', () => {
   assert.throws(() => scaffold('activerecord-api', { docs: [] }));
+  assert.throws(() => scaffold('typo-control', { docs: [] }));
   assert.throws(() => scaffold('activerecord-api', {
     docs: [{ ref: 'gem:activerecord', version: '7.0.0', kinds: ['rdoc'] }],
   }));
   assert.throws(() => scaffold('undocumented-gem', {
     docs: [{ ref: 'gem:widget_press', version: '0.1.0', kinds: ['rdoc'] }],
   }));
+});
+
+test('typo control has a working denial path but reading its README is allowed', () => {
+  const { cwd, env } = scaffold('typo-control');
+  const hook = (tool_input) => execFileSync('sh', [path.join(repo, 'hooks/posh-hook.sh'), 'PreToolUse'], {
+    cwd, env, input: JSON.stringify({ session_id: 'control', cwd, tool_name: 'Read', tool_input }), encoding: 'utf8',
+  });
+  assert.equal(hook({ file_path: path.join(cwd, 'README.md') }), '');
+  const source = { file_path: path.join(cwd, 'vendor/bundle/ruby/4.0.0/gems/activerecord-8.1.4.1/lib/active_record/relation.rb') };
+  assert.equal(JSON.parse(hook(source)).hookSpecificOutput.permissionDecision, 'deny');
+  assert.equal(hook(source), '');
 });
 
 test('scaffolds never replace existing POSH directories', () => {
