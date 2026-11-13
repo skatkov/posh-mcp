@@ -30,19 +30,22 @@ begin
   input = JSON.parse($stdin.read)
   exit 0 unless input.is_a?(Hash) && input["tool_input"].is_a?(Hash)
 
-  project = input["cwd"]
+  cwd = input["cwd"]
   session = input["session_id"]
-  exit 0 unless project.is_a?(String) && File.directory?(project)
+  exit 0 unless cwd.is_a?(String) && File.directory?(cwd)
   exit 0 unless session.is_a?(String) && session.match?(/\A[a-zA-Z0-9_-]+\z/)
+  cwd = File.realpath(cwd)
+  project = File.realpath(ARGV.fetch(0))
+  exit 0 unless cwd == project || cwd.start_with?("#{project}/")
 
   args = input["tool_input"]
   gem = case input["tool_name"]
   when "Read"
     gem_ref(args.fetch("file_path"))
   when "Grep"
-    gem_ref(args.fetch("path", project))
+    gem_ref(args.fetch("path", cwd))
   when "Glob"
-    gem_ref(File.join(args.fetch("path", project), args.fetch("pattern")))
+    gem_ref(File.join(args.fetch("path", cwd), args.fetch("pattern")))
   when "WebFetch"
     gem_ref(args.fetch("url"), source: false)
   when "Bash"
