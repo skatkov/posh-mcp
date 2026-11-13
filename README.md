@@ -121,10 +121,10 @@ In Codex, use `$posh` in place of `/posh`. The mode is saved in
 `~/.config/posh/agent-mode` and shared by all three agents. These plugins are
 not a claim that Anthropic, OpenAI, or OpenCode has reviewed or listed them.
 
-#### Redirecting gem source reads (Claude Code)
+#### Redirecting gem source reads
 
 Instructions are advisory, and an agent deep in a task tends to read the
-installed gem source anyway. In Claude Code the plugin also declines that one
+installed gem source anyway. In Claude Code, Codex, and OpenCode 2 the plugin declines that one
 call and says what to run instead: reading a gem's source, or fetching its
 documentation over HTTP, is declined once per gem per session when POSH has a
 docset for that gem in this project.
@@ -139,24 +139,43 @@ Gems with no local docs, git-sourced gems, non-Ruby projects in auto mode,
 and `/posh off` are left alone. A broad search of the gem tree gets one
 separate nudge when any locked gem has local docs.
 
-The decision parser uses Ruby's standard library, with no third-party gems.
+All three harnesses run the same policy in [`hooks/posh-lookup.rb`](hooks/posh-lookup.rb).
+It owns lookup classification, mode and project checks, POSH discovery, redirect
+text, and atomic retry markers. The adapters only translate their host contracts:
+
+- Claude Code and Codex use [`hooks/posh-pre-tool-use.rb`](hooks/posh-pre-tool-use.rb)
+  to turn the shared reason into a `PreToolUse` response.
+- [`opencode/posh.mjs`](opencode/posh.mjs) maps OpenCode's built-in tool inputs,
+  resolves the session's current location (or a shell's explicit `workdir`),
+  and turns that same reason into the host SDK's `Tool.Error`.
+
+The policy uses Ruby's standard library, with no third-party gems.
 Missing Ruby, missing or failing POSH, malformed responses, and unwritable
 session state all leave normal tool permissions unchanged. A retry of the
 same lookup goes through: this is an adoption nudge, not a security boundary
 or a ban on implementation-level source inspection. GitHub matching uses
 repository names as gem-name hints; it does not cover every repository or
-arbitrary shell program. Codex and OpenCode interception are not enabled.
+arbitrary shell program.
 Shell detection recognizes literal-leading commands (optionally `bundle exec`),
 not executable-looking words printed as arguments; compound-command tails are skipped.
 Filesystem detection is limited to Bundler/RubyGems installation layouts and the
 current Ruby's gem homes; a first-party directory merely named `gems` is left alone.
 Web lookups use the actual URL host and path, not embedded links in a query or fragment.
 
-Set `POSH_HOOK_DECISION=ask` to be asked instead of blocked, which is the
-gentler setting while trying this out. Session markers live in the plugin's
-data directory (or `$XDG_CACHE_HOME/posh/nudged`, defaulting to
-`~/.cache/posh/nudged`). [`evals/`](evals/README.md) measures whether any of
-it changes what the agent does.
+Claude Code alone supports `POSH_HOOK_DECISION=ask` to request approval instead
+of declining the lookup. Codex does not support that response; Codex and OpenCode
+always use a one-time denial followed by an allowed retry. In Codex, review the
+new hooks in `/hooks` after updating. Hosted tools such as Codex's web search
+do not pass through local tool hooks and are not intercepted.
+
+OpenCode requires the 2.3+ plugin SDK; it supplies the runtime SDK, while the
+repository pins a development copy for adapter tests. Claude and Codex hooks
+do not require Node or the OpenCode SDK.
+
+Session markers are scoped by project and gem, and live in the plugin's data
+directory (or `$XDG_CACHE_HOME/posh/nudged`, defaulting to
+`~/.cache/posh/nudged`). [`evals/`](evals/README.md) measures whether this
+changes what the agent does; its live-agent suite currently targets Claude Code.
 
 ### Cursor plugin
 

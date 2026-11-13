@@ -127,10 +127,18 @@ projects, mismatched IDs, failed reads, partial reports and parallel result orde
 
 ## Validation status
 
-`npm test` exercises the hook, parallel once-only markers, fail-open behavior, manifest
-scope, all six scaffolds, and deterministic grader checks without a Claude account or
-real POSH licence. The scaffolds and redirect/retry behavior have also been smoke-tested
-against real POSH on Linux.
+Run `npm ci` once, then `npm test`. The suite exercises the shared policy, parallel
+once-only markers, fail-open behavior, both hook manifests, all six scaffolds, and
+deterministic grader checks without an agent account or real POSH licence. OpenCode
+contract tests use its real SDK error class and a stubbed plugin context, covering
+all five lookup tools, moved sessions and shell working-directory overrides. Codex
+contract tests execute the manifest's command with its native plugin environment
+and verify denial, retry and unsupported-`ask` handling.
+
+The live eval suite and retained JSONL checker target Claude Code, not Codex or
+OpenCode. The scaffolds and redirect/retry behavior have been smoke-tested against
+real POSH on Linux, but no live-agent runs have verified the new Codex/OpenCode
+adapters yet.
 
 The latest full comparisons were interrupted, so there is no completed with/without
 baseline for this version. Older reports under ignored `results/` predate the JSONL
