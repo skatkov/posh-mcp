@@ -127,13 +127,17 @@ projects, mismatched IDs, failed reads, partial reports and parallel result orde
 
 ## Validation status
 
-Run `npm ci` once, then `npm test`. The suite exercises the shared policy, parallel
+Run `npm ci` once, then `npm test`. Tests use Node and shell tools, not a Ruby
+executable; `yaml` is a development-only dependency for reading the eval cases.
+The suite exercises the shared policy, parallel
 once-only markers, fail-open behavior, both hook manifests, all six scaffolds, and
 deterministic grader checks without an agent account or real POSH licence. OpenCode
 contract tests use its real SDK error class and a stubbed plugin context, covering
-all five lookup tools, moved sessions and shell working-directory overrides. Codex
+all five lookup tools, direct policy imports, moved sessions and shell working-directory overrides. Codex
 contract tests execute the manifest's command with its native plugin environment
-and verify denial, retry and unsupported-`ask` handling.
+and verify denial, retry and unsupported-`ask` handling. Isolated-PATH checks
+verify that hooks need Node/POSH but not Ruby. Gem-path regressions cover exported
+custom homes and standard user, XDG, system and alternate-Ruby layouts.
 
 The live eval suite and retained JSONL checker target Claude Code, not Codex or
 OpenCode. The scaffolds and redirect/retry behavior have been smoke-tested against
