@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { Error as ToolError } from '@opencode/plugin/promise/tool';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const modeFile = path.join(
@@ -103,5 +105,36 @@ export default {
     };
     await ctx.session.hook('context', addRuleset);
     await ctx.session.hook('compaction', addRuleset);
+
+    // Only translate the host contract here; every lookup decision lives in Ruby.
+    await ctx.tool.hook('execute.before', async (event) => {
+      const tools = { read: 'Read', grep: 'Grep', glob: 'Glob', shell: 'Bash', webfetch: 'WebFetch' };
+      const tool = tools[event.tool];
+      if (!tool || !event.input || typeof event.input !== 'object' || Array.isArray(event.input)) return;
+      let reason;
+      try {
+        const session = await ctx.session.get({ sessionID: event.sessionID });
+        const args = event.input;
+        const cwd = tool === 'Bash' && typeof args.workdir === 'string'
+          ? path.resolve(session.location.directory, args.workdir)
+          : session.location.directory;
+        const input = {
+          session_id: `opencode-${event.sessionID}`, cwd, tool_name: tool,
+          tool_input: tool === 'Read' ? { file_path: args.path } : args,
+        };
+        const stdout = await new Promise((resolve, reject) => {
+          const child = execFile('ruby', [path.join(root, 'hooks/posh-lookup.rb')], {
+            cwd, timeout: 4000, killSignal: 'SIGKILL',
+          }, (error, stdout) => error ? reject(error) : resolve(stdout));
+          // A missing runtime may close stdin before the JSON write finishes.
+          child.stdin.on('error', () => {});
+          child.stdin.end(JSON.stringify(input));
+        });
+        if (stdout) reason = JSON.parse(stdout).reason;
+      } catch {
+        return; // Runtime, session, POSH and transport failures leave permissions alone.
+      }
+      if (typeof reason === 'string' && reason) throw new ToolError({ message: reason });
+    });
   },
 };
