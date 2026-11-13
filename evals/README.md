@@ -52,6 +52,10 @@ adoption fails. The separate evidence checker must pass too: it validates succes
 reads in the with-plugin arm only, without adding impossible requirements to the baseline.
 `--keep-temp` is required because it reads each run's retained `tracePath`.
 It rejects partial reports, incomplete run counts, errored runs and missing traces.
+If the eval command uses `--runs N`, repeat it on the checker:
+`node evals/check-evidence.mjs REPORT.json --runs N`. Claude Code 2.1.323 records the
+case's default `runsPerCase`, not the command-line override; the checker cannot infer
+the requested count from that report alone.
 
 For a cheaper first check after changing a grader:
 
