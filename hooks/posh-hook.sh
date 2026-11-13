@@ -20,10 +20,7 @@ ruby_project() {
   dir=${CLAUDE_PROJECT_DIR:-$PWD}
   while [ "$dir" != / ] && [ "$dir" != "$HOME" ]; do
     for marker in "$dir"/Gemfile "$dir"/Gemfile.lock "$dir"/gems.rb "$dir"/*.gemspec; do
-      if [ -e "$marker" ]; then
-        printf '%s\n' "$dir"
-        return 0
-      fi
+      [ -e "$marker" ] && return 0
     done
     [ -e "$dir/.git" ] && return 1
     dir=$(dirname -- "$dir")
@@ -35,7 +32,7 @@ active() {
   case $(mode) in
     on | feedback) return 0 ;;
     off) return 1 ;;
-    *) ruby_project >/dev/null ;;
+    *) ruby_project ;;
   esac
 }
 
@@ -48,13 +45,9 @@ ruleset() {
 }
 
 # Only our own text reaches this, never the prompt, and SKILL.md has no tabs.
-json_string() {
-  printf '%s\n' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk '{ printf "%s%s", (NR > 1 ? "\\n" : ""), $0 }'
-}
-
 emit() {
   printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"' "$event"
-  json_string "$1"
+  printf '%s\n' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk '{ printf "%s%s", (NR > 1 ? "\\n" : ""), $0 }'
   printf '"}}\n'
 }
 
@@ -97,7 +90,7 @@ $(ruleset)"
       ;;
     auto)
       rm -f "$mode_file"
-      if ruby_project >/dev/null; then
+      if ruby_project; then
         emit "POSH is now on for Ruby projects only, which includes this one.$stop_feedback Confirm in one short line.
 
 $(ruleset)"
