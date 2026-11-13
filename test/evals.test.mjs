@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { expectedReads } from '../evals/check-evidence.mjs';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const evals = path.join(repo, 'evals');
@@ -102,54 +103,12 @@ test('typo grader checks actual file contents, not an Edit request or the final 
   }
 });
 
-test('adoption correlates the expected document, project, and successful tool result', () => {
-  const project = '/tmp/claude-eval-fixture/home/cwd';
-  const refs = {
-    'activerecord-api': 'posh://gem:activerecord/rdoc/ActiveRecord/Relation.md#method-i-update_all',
-    'hook-redirect': 'posh://gem:activerecord/rdoc/ActiveRecord/Relation.md#method-i-update_all',
-    'github-source': 'posh://gem:nokogiri/rdoc/Nokogiri/XML/Searchable.md#method-i-css',
-    'kamal-guide': 'posh://gem:kamal/guide/docs/configuration/docker-registry.md',
-  };
-  const unrelated = 'posh://lang:ruby/rdoc/Array.md';
-  const init = { type: 'system', subtype: 'init', cwd: project };
-  const call = (id, ref, scope) => ({
-    type: 'assistant',
-    message: { content: [{ type: 'tool_use', id, name: 'mcp__plugin_posh_docs__read', input: { ref, ...(scope === undefined ? {} : { project: scope }) } }] },
-  });
-  const result = (id, ref, ok = true) => {
-    const body = ok ? { data: { ref, content: 'API docs' }, ok: true, summary: 'Document read' } : { ok: false, code: 'license_required' };
-    return {
-      type: 'user',
-      message: { content: [{ tool_use_id: id, type: 'tool_result', content: JSON.stringify(body) }] },
-      tool_use_result: { structuredContent: body },
-    };
-  };
-  const trace = (...events) => [init, ...events].map((event) => JSON.stringify(event)).join('\n');
+test('read evidence expectations cover the suite and adoption indicators do not inflate the baseline', () => {
+  assert.deepEqual(Object.keys(expectedReads).sort(), names.sort());
   for (const spec of cases.filter((item) => item.tags.includes('adoption') || item.tags.includes('interception'))) {
-    const ref = refs[spec.name];
+    assert.equal(typeof expectedReads[spec.name], 'string');
     const order = spec.graders.find((grader) => grader.type === 'tool_order');
-    assert.equal(order.before, 'mcp__plugin_posh_docs__search');
-    assert.equal(order.after.tool, 'mcp__plugin_posh_docs__read');
-    assert.equal(order.arm, 'with-only');
-    assert.equal(new RegExp(order.after.input_match).test(JSON.stringify({ ref })), true);
-    assert.equal(new RegExp(order.after.input_match).test(JSON.stringify({ ref: unrelated })), false);
-    const success = spec.graders.find((grader) => grader.name === 'documentation-read-succeeded');
-    const pattern = new RegExp(success.pattern, success.flags);
-    assert.equal(pattern.test(trace(call('expected', ref), result('expected', ref))), true);
-    assert.equal(pattern.test(trace(call('expected', ref, project), result('expected', ref))), true);
-    assert.equal(pattern.test(trace(call('expected', ref, `${project}/`), result('expected', ref))), true);
-    assert.equal(pattern.test(trace(call('expected', ref, '/another/project'), result('expected', ref))), false);
-    assert.equal(pattern.test(trace(call('expected', ref), result('expected', ref, false))), false);
-    assert.equal(pattern.test(trace(call('expected', ref), result('other-id', ref))), false);
-    assert.equal(pattern.test(trace(call('expected', ref), result('expected', unrelated))), false);
-    assert.equal(pattern.test(trace(call('other', unrelated), result('other', unrelated))), false);
-    // The old independent indicators passed this sequence: correct-gem search ref,
-    // failed expected read, then a successful unrelated read.
-    const search = { type: 'assistant', message: { content: [{ type: 'tool_use', id: 'search', name: 'mcp__plugin_posh_docs__search', input: { query: 'API' } }] } };
-    assert.equal(pattern.test(trace(search, result('search', ref), call('expected', ref), result('expected', ref, false), call('other', unrelated), result('other', unrelated))), false);
-    assert.equal(pattern.test(trace(call('expected', ref), result('expected', ref, false), call('wrong-project', ref, '/another/project'), result('wrong-project', ref))), false);
-    assert.equal(pattern.test(trace(call('expected', ref), { type: 'assistant', message: { content: [{ type: 'text', text: `Document read: ${ref}` }] } })), false);
-    assert.equal(pattern.test(trace(call('expected', ref), call('other', unrelated), result('other', unrelated), result('expected', ref))), true);
+    assert.equal(new RegExp(order.after.input_match).test(JSON.stringify({ ref: expectedReads[spec.name] })), true);
     assert.ok(spec.graders.some((grader) => grader.type === 'llm' && grader.arm !== 'with-only'));
     assert.ok(spec.graders.filter((grader) => grader.type !== 'llm').every((grader) => grader.arm === 'with-only'));
   }

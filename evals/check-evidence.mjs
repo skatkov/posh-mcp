@@ -1,0 +1,116 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
+export const expectedReads = JSON.parse(fs.readFileSync(new URL('./expected-reads.json', import.meta.url), 'utf8'));
+
+const normalizeRef = (ref) => typeof ref === 'string' ? ref.replace(/^posh:\/\//, '') : null;
+
+function matchesDocument(actual, expected) {
+  const ref = normalizeRef(actual);
+  if (!ref) return false;
+  const [page, section] = ref.split('#');
+  const [expectedPage, expectedSection] = expected.split('#');
+  return page === expectedPage && (!section || !expectedSection || section === expectedSection);
+}
+
+export function hasSuccessfulRead(trace, expected) {
+  const events = trace.split(/\r?\n/).map((line, index) => {
+    if (!line.trim()) return null;
+    try {
+      const event = JSON.parse(line);
+      if (event && typeof event === 'object' && !Array.isArray(event)) return event;
+    } catch {}
+    throw new Error(`Invalid trace JSON at line ${index + 1}`);
+  }).filter(Boolean);
+  const calls = new Map();
+  let project;
+  for (const event of events) {
+    if (event.type === 'system' && event.subtype === 'init' && typeof event.cwd === 'string' && path.isAbsolute(event.cwd)) {
+      project = path.resolve(event.cwd);
+    }
+    const blocks = event.message?.content;
+    if (!Array.isArray(blocks)) continue;
+    for (const block of blocks) {
+      if (event.type === 'assistant' && block.type === 'tool_use' && block.name === 'mcp__plugin_posh_docs__read') {
+        const input = block.input;
+        const scope = input && Object.hasOwn(input, 'project') ? input.project : project;
+        if (project && typeof block.id === 'string' && typeof scope === 'string' &&
+            path.resolve(project, scope) === project && matchesDocument(input?.ref, expected)) {
+          calls.set(block.id, normalizeRef(input.ref));
+        } else {
+          calls.delete(block.id);
+        }
+      }
+      if (event.type !== 'user' || block.type !== 'tool_result') continue;
+      const requested = calls.get(block.tool_use_id);
+      calls.delete(block.tool_use_id);
+      if (!requested || block.is_error === true) continue;
+      // Read the content of this result block, never metadata belonging to a sibling result.
+      const content = Array.isArray(block.content)
+        ? block.content.filter((item) => item.type === 'text').map((item) => item.text).join('\n')
+        : block.content;
+      if (typeof content !== 'string') continue;
+      let body;
+      try { body = JSON.parse(content); } catch { continue; }
+      if (body?.ok === true && body.summary === 'Document read' &&
+          normalizeRef(body.data?.ref) === requested &&
+          typeof body.data?.content === 'string' && body.data.content.trim()) return true;
+    }
+  }
+  return false;
+}
+
+export function checkReport(report) {
+  if (!report || report.schemaVersion !== 1 || report.partial !== false ||
+      !Array.isArray(report.cases) || !report.cases.length ||
+      !['none', 'with-without'].includes(report.suite?.ablation)) {
+    throw new Error('Expected a complete schemaVersion 1 eval report; partial runs are not adoption evidence');
+  }
+  const arms = report.suite?.ablation === 'with-without' ? ['with', 'without'] : ['with'];
+  const failures = [];
+  let checked = 0;
+  for (const spec of report.cases) {
+    if (!Object.hasOwn(expectedReads, spec.name) || !Number.isInteger(spec.runsPerCase) || spec.runsPerCase < 1) {
+      throw new Error(`Unknown or invalid eval case: ${spec.name}`);
+    }
+    for (const arm of arms) {
+      const runs = spec.arms?.[arm];
+      if (!Array.isArray(runs) || runs.length !== spec.runsPerCase) {
+        failures.push(`${spec.name} [${arm}]: incomplete run count`);
+        continue;
+      }
+      for (const [index, run] of runs.entries()) {
+        const label = `${spec.name} [${arm}] run ${index + 1}`;
+        if (!run || run.error || run.aborted || run.skippedPaidGraders) {
+          failures.push(`${label}: run did not finish normally`);
+          continue;
+        }
+        const expected = expectedReads[spec.name];
+        if (arm !== 'with' || !expected) continue;
+        checked++;
+        try {
+          if (!hasSuccessfulRead(fs.readFileSync(run.tracePath, 'utf8'), expected)) {
+            failures.push(`${label}: no successful read of ${expected} in the fixture project`);
+          }
+        } catch (error) {
+          failures.push(`${label}: cannot inspect retained trace (${error.message})`);
+        }
+      }
+    }
+  }
+  return { checked, failures };
+}
+
+if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {
+  try {
+    if (process.argv.length !== 3) throw new Error('Usage: node evals/check-evidence.mjs REPORT.json (run evals with --keep-temp)');
+    const { checked, failures } = checkReport(JSON.parse(fs.readFileSync(process.argv[2], 'utf8')));
+    for (const failure of failures) console.error(failure);
+    console.log(`POSH read evidence: ${checked} run(s) checked, ${failures.length} failure(s)`);
+    process.exitCode = failures.length ? 1 : 0;
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+}
