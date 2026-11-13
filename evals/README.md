@@ -122,9 +122,10 @@ document content. Expected refs live once in `expected-reads.json`; `null` means
 control case has no required read. JSON field order does not matter.
 
 The same event sequence owns interception and remote-source evidence; neither is
-graded by searching arbitrary trace text. `hook-redirect` requires a successful
-native `PreToolUse` hook response carrying a POSH denial, followed by a newly issued
-successful POSH read. A read issued before the denial cannot satisfy that sequence.
+graded by searching arbitrary trace text. `hook-redirect` requires a correlated
+tool error with hook-rejection permission metadata and an anchored POSH denial
+reason, followed by a newly issued successful POSH read. Optional hook lifecycle
+events are not required. A read issued before the denial cannot satisfy that sequence.
 `github-source` rejects successful or unresolved WebFetch calls to Nokogiri's GitHub
 repository, while allowing correlated error/denial results and URLs quoted in docs.
 

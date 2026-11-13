@@ -12,13 +12,9 @@ const hasSuccessfulRead = (trace, expected) => inspectTrace(trace, expected).rea
 const project = '/tmp/claude-eval-fixture/home/cwd';
 const unrelated = 'gem:other/rdoc/Other.md';
 const init = { type: 'system', subtype: 'init', cwd: project };
-const denial = {
-  type: 'system', subtype: 'hook_response', hook_event: 'PreToolUse', exit_code: 0, outcome: 'success',
-  output: JSON.stringify({ hookSpecificOutput: {
-    hookEventName: 'PreToolUse', permissionDecision: 'deny',
-    permissionDecisionReason: 'POSH has local documentation for gem:activerecord 8.1.4.1.',
-  } }),
-};
+// Sanitized call/result envelope retained from Claude Code 2.1.323, without optional hook lifecycle events.
+const denialEvents = fs.readFileSync(new URL('./fixtures/claude-hook-denial.jsonl', import.meta.url), 'utf8')
+  .trim().split(/\r?\n/).map((line) => JSON.parse(line));
 const call = (id, ref, scope) => ({
   type: 'assistant',
   message: { content: [{ type: 'tool_use', id, name: 'mcp__plugin_posh_docs__read', input: { ref, ...(scope === undefined ? {} : { project: scope }) } }] },
@@ -111,22 +107,46 @@ test('incomplete, malformed, and empty read evidence fails closed', () => {
 
 test('redirect evidence requires a native denial before the successful read is issued', () => {
   const ref = expectedReads['hook-redirect'];
-  assert.equal(inspectTrace(trace(denial, call('read', ref), result('read', ref)), ref).readAfterRedirect, true);
+  const [lookup, denial] = denialEvents;
+  assert.equal(inspectTrace(trace(...denialEvents, call('read', ref), result('read', ref)), ref).readAfterRedirect, true);
   for (const events of [
-    [call('read', ref), result('read', ref), denial],
-    [call('read', ref), denial, result('read', ref)],
-    [denial, call('read', ref), result('read', ref, false)],
-    [{ ...denial, type: 'assistant' }, call('read', ref), result('read', ref)],
-    [{ ...denial, hook_event: 'SessionStart' }, call('read', ref), result('read', ref)],
-    [{ ...denial, exit_code: 1 }, call('read', ref), result('read', ref)],
-    [{ ...denial, outcome: 'error' }, call('read', ref), result('read', ref)],
-    [{ ...denial, output: 'not JSON' }, call('read', ref), result('read', ref)],
-    [{ ...denial, output: JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }) }, call('read', ref), result('read', ref)],
+    [call('read', ref), result('read', ref), ...denialEvents],
+    [lookup, call('read', ref), denial, result('read', ref)],
+    [...denialEvents, call('read', ref), result('read', ref, false)],
+    [denial, call('read', ref), result('read', ref)],
+    [lookup, { ...denial, type: 'assistant' }, call('read', ref), result('read', ref)],
   ]) {
     assert.equal(inspectTrace(trace(...events), ref).readAfterRedirect, false);
   }
   const quoted = { type: 'assistant', message: { content: [{ type: 'text', text: JSON.stringify(denial) }] } };
   assert.equal(inspectTrace(trace(quoted, call('read', ref), result('read', ref)), ref).readAfterRedirect, false);
+});
+
+test('redirect evidence correlates hook rejection metadata and the POSH reason to the same result', () => {
+  const ref = expectedReads['hook-redirect'];
+  const [lookup, denial] = denialEvents;
+  for (const mutate of [
+    (event) => { delete event.tool_result_meta; },
+    (event) => { event.tool_result_meta[0].id = 'another-call'; },
+    (event) => { event.tool_result_meta[0].permission_decision.decision = 'accept'; },
+    (event) => { event.tool_result_meta[0].permission_decision.source = 'config'; },
+    (event) => { event.tool_result_meta[0].permission_decision.reason_type = 'rule'; },
+    (event) => { event.message.content[0].is_error = false; },
+    (event) => { event.message.content[0].content = 'Unrelated failure'; },
+    (event) => { event.message.content[0].content = 'Quoted: ' + event.message.content[0].content; },
+    (event) => { event.message.content[0].content = event.message.content[0].content.replace('PreToolUse:Grep', 'PreToolUse:Read'); },
+    (event) => {
+      event.message.content.push({ ...event.message.content[0], tool_use_id: 'another-call' });
+      event.message.content[0].content = 'Unrelated failure';
+    },
+  ]) {
+    const changed = structuredClone(denial);
+    mutate(changed);
+    assert.equal(inspectTrace(trace(lookup, changed, call('read', ref), result('read', ref)), ref).readAfterRedirect, false);
+  }
+  const textBlocks = structuredClone(denial);
+  textBlocks.message.content[0].content = [{ type: 'text', text: textBlocks.message.content[0].content }];
+  assert.equal(inspectTrace(trace(lookup, textBlocks, call('read', ref), result('read', ref)), ref).readAfterRedirect, true);
 });
 
 test('GitHub evidence counts correlated WebFetch outcomes, not URLs quoted in documentation', () => {
@@ -169,7 +189,7 @@ test('report checker enforces structured interception and GitHub requirements', 
     const read = [call('read', ref), result('read', ref)];
     fs.writeFileSync(tracePath, trace(...read));
     assert.equal(checkReport(report).failures.length, name === 'hook-redirect' ? 1 : 0);
-    fs.writeFileSync(tracePath, trace(denial, ...read));
+    fs.writeFileSync(tracePath, trace(...denialEvents, ...read));
     assert.deepEqual(checkReport(report), { checked: 1, failures: [] });
     if (name === 'hook-redirect') continue;
     fs.writeFileSync(tracePath, trace(...read, {
