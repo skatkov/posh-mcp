@@ -42,14 +42,6 @@ export function inspectTrace(trace, expected) {
     if (event.type === 'system' && event.subtype === 'init' && typeof event.cwd === 'string' && path.isAbsolute(event.cwd)) {
       project = path.resolve(event.cwd);
     }
-    if (event.type === 'system' && event.subtype === 'hook_response' &&
-        event.hook_event === 'PreToolUse' && event.exit_code === 0 && event.outcome === 'success') {
-      try {
-        const output = JSON.parse(event.output).hookSpecificOutput;
-        if (output?.hookEventName === 'PreToolUse' && output.permissionDecision === 'deny' &&
-            output.permissionDecisionReason?.startsWith('POSH has local documentation for ')) redirected = true;
-      } catch {}
-    }
     const blocks = event.message?.content;
     if (!Array.isArray(blocks)) continue;
     for (const block of blocks) {
@@ -60,7 +52,7 @@ export function inspectTrace(trace, expected) {
         const read = block.name === 'mcp__plugin_posh_docs__read' && project && typeof scope === 'string' &&
           path.resolve(project, scope) === project && matchesDocument(input?.ref, expected);
         const githubSource = block.name === 'WebFetch' && isNokogiriSource(input?.url);
-        calls.set(block.id, { ref: read ? normalizeRef(input.ref) : null, redirected, githubSource });
+        calls.set(block.id, { tool: block.name, ref: read ? normalizeRef(input.ref) : null, redirected, githubSource });
         // Unresolved fetches also fail closed; only a correlated error proves no successful fetch.
         if (githubSource) evidence.githubFetches++;
       }
@@ -68,15 +60,20 @@ export function inspectTrace(trace, expected) {
       const call = calls.get(block.tool_use_id);
       calls.delete(block.tool_use_id);
       if (!call) continue;
+      // Read this result block, never content or permission metadata belonging to a sibling.
+      const content = Array.isArray(block.content)
+        ? block.content.filter((item) => item?.type === 'text').map((item) => item.text).join('\n')
+        : block.content;
       if (block.is_error === true) {
+        const decision = Array.isArray(event.tool_result_meta)
+          ? event.tool_result_meta.find((item) => item?.id === block.tool_use_id)?.permission_decision : null;
+        if (decision?.decision === 'reject' && decision.source === 'hook' && decision.reason_type === 'hook' &&
+            typeof content === 'string' &&
+            content.startsWith(`PreToolUse:${call.tool} hook error: POSH has local documentation for `)) redirected = true;
         if (call.githubSource) evidence.githubFetches--;
         continue;
       }
       if (!call.ref) continue;
-      // Read the content of this result block, never metadata belonging to a sibling result.
-      const content = Array.isArray(block.content)
-        ? block.content.filter((item) => item.type === 'text').map((item) => item.text).join('\n')
-        : block.content;
       if (typeof content !== 'string') continue;
       let body;
       try { body = JSON.parse(content); } catch { continue; }
