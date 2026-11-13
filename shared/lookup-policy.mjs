@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { parseArgs, promisify } from 'node:util';
 
 const execute = promisify(execFile);
 const gemTree = Symbol('gem-tree');
@@ -105,6 +105,40 @@ function commandWords(command) {
   return words;
 }
 
+const commandOptions = {
+  cat: { flags: 'b e n s t u v A E T', values: '' },
+  ls: { flags: 'a A d f F h l n r R s S t u U x 1', values: 'I ignore hide' },
+  head: { flags: 'q v', values: 'n c lines bytes' },
+  tail: { flags: 'f F q v', values: 'n c lines bytes' },
+  cd: { flags: 'L P e', values: '' },
+  grep: { flags: 'E F G i v w x n H h r R l L c o q s a I', values: 'e f m A B C regexp file include exclude exclude-dir' },
+  rg: { flags: 'F i v w x n H l c o q s U u a', values: 'e f g t T m A B C regexp file glob iglob type type-not' },
+  sed: { flags: 'n E r', values: 'e f expression file' },
+  awk: { flags: '', values: 'F v f' },
+  curl: { flags: 's S L f I k O', values: 'o output d data data-raw data-binary data-urlencode H header X request u user A user-agent e referer w write-out' },
+  wget: { flags: 'q c', values: 'O output-document o output-file header post-data post-file' },
+};
+
+function commandOperands(tool, args) {
+  if (tool === 'find') {
+    const end = args.findIndex((arg) => arg.startsWith('-') || ['!', '('].includes(arg));
+    return end === -1 ? args : args.slice(0, end);
+  }
+  const spec = commandOptions[tool];
+  if (!spec) return [];
+  // shortcut: unknown options fail open; add observed forms rather than guessing operand roles.
+  const options = Object.fromEntries([
+    ...spec.flags.split(' ').filter(Boolean).map((name) => [name, { type: 'boolean', short: name.length === 1 ? name : undefined }]),
+    ...spec.values.split(' ').filter(Boolean).map((name) => [name, { type: 'string', short: name.length === 1 ? name : undefined }]),
+  ]);
+  const { positionals, values } = parseArgs({ args, options, allowPositionals: true });
+  if (['grep', 'rg', 'sed', 'awk'].includes(tool) &&
+      !['e', 'f', 'regexp', 'file', 'expression'].some((name) => Object.hasOwn(values, name))) {
+    return positionals.slice(1);
+  }
+  return positionals;
+}
+
 function lookupForCommand(command, cwd) {
   let words = commandWords(command);
   if (!words) return null;
@@ -118,7 +152,7 @@ function lookupForCommand(command, cwd) {
   const lookup = ['curl', 'wget'].includes(tool) ? lookupForUrl
     : ['cat', 'sed', 'grep', 'rg', 'find', 'ls', 'head', 'tail', 'awk', 'cd'].includes(tool) ? lookupForPath : null;
   if (lookup) {
-    for (const arg of args) {
+    for (const arg of commandOperands(tool, args)) {
       const ref = lookup(arg, cwd);
       if (ref) return ref;
     }
