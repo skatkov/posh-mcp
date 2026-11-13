@@ -132,11 +132,10 @@ function commandOperands(tool, args) {
     ...spec.values.split(' ').filter(Boolean).map((name) => [name, { type: 'string', short: name.length === 1 ? name : undefined }]),
   ]);
   const { positionals, values } = parseArgs({ args, options, allowPositionals: true });
-  if (['grep', 'rg', 'sed', 'awk'].includes(tool) &&
-      !['e', 'f', 'regexp', 'file', 'expression'].some((name) => Object.hasOwn(values, name))) {
-    return positionals.slice(1);
-  }
-  return positionals;
+  const operands = ['grep', 'rg', 'sed', 'awk'].includes(tool) &&
+    !['e', 'f', 'regexp', 'file', 'expression'].some((name) => Object.hasOwn(values, name))
+    ? positionals.slice(1) : positionals;
+  return tool === 'awk' ? operands.filter((arg) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(arg)) : operands;
 }
 
 function lookupForCommand(command, cwd) {

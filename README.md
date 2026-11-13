@@ -161,8 +161,8 @@ arbitrary shell program.
 Shell detection recognizes literal-leading commands (optionally `bundle exec`),
 not executable-looking words printed as arguments; compound-command tails are skipped.
 Known command options are parsed before classifying operands; search patterns,
-scripts, request bodies and output filenames are not lookup targets. Unknown
-option forms are left alone rather than guessing their meaning.
+scripts, AWK variable values, request bodies and output filenames are not lookup
+targets. Unknown option forms are left alone rather than guessing their meaning.
 Filesystem detection recognizes Bundler/RubyGems installation layouts and custom
 gem homes exported through `GEM_HOME` or `GEM_PATH`; a first-party directory merely
 named `gems` is left alone. It does not run `Gem.path`, so arbitrary unexported
