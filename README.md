@@ -129,8 +129,9 @@ call and says what to run instead: reading a gem's source, or fetching its
 documentation over HTTP, is declined once per gem per session when POSH has a
 docset for that gem in this project.
 
-The check uses `posh docsets` for the current working directory, including
-after entering a worktree. It requires a matching locked gem with installed
+The check resolves the Ruby project above the current working directory, stopping
+at the Git root, including after entering a worktree. It validates POSH's returned
+project against that root, not against an arbitrary subdirectory. It requires a matching locked gem with installed
 documentation; private gems with docs are treated the same as public ones.
 Gems with no local docs, git-sourced gems, non-Ruby projects in auto mode,
 and `/posh off` are left alone. A broad search of the gem tree gets one

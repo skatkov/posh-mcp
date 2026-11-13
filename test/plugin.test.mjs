@@ -52,6 +52,7 @@ before(() => {
     path.join(poshBin, 'posh'),
     `#!/bin/sh
 [ "$1" = docsets ] || exit 1
+if [ -n "\${FAKE_POSH_EXPECT_PROJECT:-}" ]; then [ "$4" = "$FAKE_POSH_EXPECT_PROJECT" ] || exit 1; fi
 if [ -n "\${FAKE_POSH_RESPONSE+x}" ]; then printf '%s' "$FAKE_POSH_RESPONSE"; exit; fi
 printf '%s' '{"ok":true,"project_path":' "$FAKE_POSH_PROJECT_JSON" ',"data":'
 case "$*" in
@@ -393,6 +394,30 @@ test('uses the current directory, not the project where the session started', ()
   const current = project('Gemfile.lock');
   const out = toolUse(current, { command: 'bundle show kamal' }, { tool: 'Bash', env: { CLAUDE_PROJECT_DIR: project('package.json') } });
   assert.equal(out.permissionDecision, 'deny');
+});
+
+test('uses the Ruby project root when the current directory is nested', () => {
+  const root = project('Gemfile.lock', '.git');
+  const cwd = path.join(root, 'app/models');
+  fs.mkdirSync(cwd, { recursive: true });
+  const env = { FAKE_POSH_PROJECT_JSON: JSON.stringify(root), FAKE_POSH_EXPECT_PROJECT: root };
+  assert.equal(toolUse(cwd, { command: 'bundle show kamal' }, { tool: 'Bash', env }).permissionDecision, 'deny');
+});
+
+test('rejects an outer project even when POSH returns an ancestor of the current directory', () => {
+  const outer = project('Gemfile.lock');
+  const inner = path.join(outer, 'nested-repo');
+  fs.mkdirSync(inner);
+  fs.writeFileSync(path.join(inner, '.git'), '');
+  fs.writeFileSync(path.join(inner, 'Gemfile.lock'), '');
+  assert.equal(toolUse(inner, { command: 'bundle show kamal' }, {
+    tool: 'Bash', env: { FAKE_POSH_PROJECT_JSON: JSON.stringify(outer) },
+  }), null);
+  fs.unlinkSync(path.join(inner, 'Gemfile.lock'));
+  runHook('UserPromptSubmit', inner, prompt('/posh on'));
+  assert.equal(toolUse(inner, { command: 'bundle show kamal' }, {
+    tool: 'Bash', env: { FAKE_POSH_PROJECT_JSON: JSON.stringify(outer) },
+  }), null);
 });
 
 test('a project path mentioning gems is not itself a source read', () => {

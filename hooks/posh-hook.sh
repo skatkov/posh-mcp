@@ -17,11 +17,14 @@ mode() {
 }
 
 # $HOME is excluded because a stray ~/Gemfile does not make every folder Ruby.
-in_ruby_project() {
+ruby_project() {
   dir=${CLAUDE_PROJECT_DIR:-$PWD}
   while [ "$dir" != / ] && [ "$dir" != "$HOME" ]; do
     for marker in "$dir"/Gemfile "$dir"/Gemfile.lock "$dir"/gems.rb "$dir"/*.gemspec; do
-      [ -e "$marker" ] && return 0
+      if [ -e "$marker" ]; then
+        printf '%s\n' "$dir"
+        return 0
+      fi
     done
     [ -e "$dir/.git" ] && return 1
     dir=$(dirname -- "$dir")
@@ -33,7 +36,7 @@ active() {
   case $(mode) in
     on | feedback) return 0 ;;
     off) return 1 ;;
-    *) in_ruby_project ;;
+    *) ruby_project >/dev/null ;;
   esac
 }
 
@@ -95,7 +98,7 @@ $(ruleset)"
       ;;
     auto)
       rm -f "$mode_file"
-      if in_ruby_project; then
+      if ruby_project >/dev/null; then
         emit "POSH is now on for Ruby projects only, which includes this one.$stop_feedback Confirm in one short line.
 
 $(ruleset)"
@@ -117,7 +120,8 @@ case $event in
     # Worktrees and `cd` can move away from the initial CLAUDE_PROJECT_DIR.
     CLAUDE_PROJECT_DIR=$PWD
     if active && command -v ruby >/dev/null 2>&1; then
-      ruby "$root/hooks/posh-pre-tool-use.rb"
+      project=$(ruby_project) || exit 0
+      ruby "$root/hooks/posh-pre-tool-use.rb" "$project"
     fi
     ;;
 esac
