@@ -273,10 +273,21 @@ test('matches a gem directory with no trailing slash, as `cd <gem dir> && ...` l
   assert.equal(toolUse(dir, { command }, { tool: 'Bash' }).permissionDecision, 'deny');
 });
 
-test('takes the gem from the last /gems/ segment, not the ruby version directory', () => {
+test('takes the gem relative to its installation root, not the ruby version directory', () => {
   const dir = project('Gemfile.lock');
   const out = toolUse(dir, { pattern: 'def perform', path: gemDir('kamal', '2.12.0') }, { tool: 'Grep' });
   assert.match(out.permissionDecisionReason, /gem:kamal 2\.12\.0/);
+});
+
+test('does not take the gem name from an ancestor or from files inside the installed gem', () => {
+  const dir = project('Gemfile.lock');
+  for (const file_path of [
+    '/repo/gems/payments-0.1.0/vendor/bundle/ruby/4.0.0/gems/kamal-2.12.0/lib/kamal.rb',
+    `${gemDir('geneva_drive', '0.7.0')}/vendor/bundle/ruby/4.0.0/gems/kamal-2.12.0/lib/kamal.rb`,
+    `${gemDir('kamal', '2.12.0')}/lib/gems/payments-0.1.0/example.rb`,
+  ]) {
+    assert.match(toolUse(dir, { file_path }).permissionDecisionReason, /gem:kamal 2\.12\.0/);
+  }
 });
 
 for (const [name, tool, tool_input] of [

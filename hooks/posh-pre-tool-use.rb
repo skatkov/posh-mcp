@@ -8,11 +8,15 @@ require "rubygems"
 
 def lookup_for_path(path)
   path = File.expand_path(path)
-  installed = path.match?(%r{/(?:vendor/bundle|ruby/gems|gems/\d+\.\d+(?:\.\d+)?|\.gem/(?:ruby|jruby)/[^/]+)(?:/|\z)}) ||
-    Gem.path.any? { |home| path == home || path == "#{home}/gems" || path.start_with?("#{home}/gems/") }
-  return unless installed
+  roots = Gem.path.select { |home| path == home || path == "#{home}/gems" || path.start_with?("#{home}/gems/") }
+  path.scan(%r{/(?:vendor/bundle|ruby/gems|gems/\d+\.\d+(?:\.\d+)?|\.gem/(?:ruby|jruby)/[^/]+)(?=/|\z)}) do
+    roots << path[0...Regexp.last_match.end(0)]
+  end
+  root = roots.max_by(&:length)
+  return unless root
 
-  match = path.match(%r{/gems/([a-zA-Z0-9_.-]+)-[0-9][0-9a-zA-Z.]*})
+  relative = path.delete_prefix(root)
+  match = relative.match(%r{\A(?:/(?:ruby|jruby|truffleruby)/[^/]+|/\d+\.\d+(?:\.\d+)?|/\*\*)?/gems/([a-zA-Z0-9_.-]+)-[0-9][0-9a-zA-Z.]*})
   match ? "gem:#{match[1]}" : :gem_tree
 end
 
