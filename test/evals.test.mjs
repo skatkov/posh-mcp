@@ -107,6 +107,7 @@ test('read evidence expectations cover the suite and adoption indicators do not 
   for (const spec of cases.filter((item) => item.tags.includes('adoption') || item.tags.includes('interception'))) {
     assert.equal(typeof expectedReads[spec.name], 'string');
     assert.equal(spec.graders.some((grader) => grader.type === 'tool_order'), false);
+    assert.equal(spec.graders.some((grader) => grader.type === 'regex' && grader.target === 'trace'), false);
     assert.ok(spec.graders.some((grader) => grader.type === 'llm' && grader.arm !== 'with-only'));
     assert.ok(spec.graders.filter((grader) => grader.type !== 'llm').every((grader) => grader.arm === 'with-only'));
   }

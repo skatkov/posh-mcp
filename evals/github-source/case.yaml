@@ -22,10 +22,3 @@ graders:
       namespace bindings is appended as a trailing argument. Both examples are consistent with
       that signature.
     weight: 2
-  - type: regex
-    name: did-not-fetch-the-source-from-github
-    target: trace
-    pattern: 'githubusercontent\.com|github\.com/sparklemotion'
-    match: not_contains
-    arm: with-only
-    weight: 1
