@@ -148,13 +148,10 @@ function lookupForCommand(command, cwd) {
     const name = args[1];
     return typeof name === 'string' && /^[a-zA-Z0-9_]/.test(name) && !/[^a-zA-Z0-9_.-]/.test(name) ? `gem:${name}` : null;
   }
-  const lookup = ['curl', 'wget'].includes(tool) ? lookupForUrl
-    : ['cat', 'sed', 'grep', 'rg', 'find', 'ls', 'head', 'tail', 'awk', 'cd'].includes(tool) ? lookupForPath : null;
-  if (lookup) {
-    for (const arg of commandOperands(tool, args)) {
-      const ref = lookup(arg, cwd);
-      if (ref) return ref;
-    }
+  const lookup = ['curl', 'wget'].includes(tool) ? lookupForUrl : lookupForPath;
+  for (const arg of commandOperands(tool, args)) {
+    const ref = lookup(arg, cwd);
+    if (ref) return ref;
   }
   return null;
 }
