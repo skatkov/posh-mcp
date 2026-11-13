@@ -96,7 +96,8 @@ tuning anything else.
 
 ## Reading a failure
 
-`hook-redirect` failing with *pattern not found in trace* means the hook did not fire.
+`hook-redirect` failing with *no successful POSH read issued after a native POSH denial*
+means the checker could not establish the redirect-to-read sequence.
 Hooks do run inside `claude plugin eval`, so check, in order: the scaffold's symlinks
 landed (without them `posh docsets` fails inside the run and the hook correctly allows
 everything); the `PreToolUse` matcher in `hooks/claude-hooks.json` covers the tool
@@ -113,10 +114,17 @@ the README read is allowed.
 The adoption cases require a successful read of the expected API page or registry
 guide, not a particular discovery sequence. `search`, `list`, `outline`, and previously
 returned refs are all valid ways to find it; no redundant search call is required.
-`check-evidence.mjs` parses JSONL records with `JSON.parse`, matches read calls
+`check-evidence.mjs` parses JSONL records once with `JSON.parse`, matches tool calls
 and result blocks by tool ID, and verifies the project, returned ref and nonempty
 document content. Expected refs live once in `expected-reads.json`; `null` means a
 control case has no required read. JSON field order does not matter.
+
+The same event sequence owns interception and remote-source evidence; neither is
+graded by searching arbitrary trace text. `hook-redirect` requires a successful
+native `PreToolUse` hook response carrying a POSH denial, followed by a newly issued
+successful POSH read. A read issued before the denial cannot satisfy that sequence.
+`github-source` rejects successful or unresolved WebFetch calls to Nokogiri's GitHub
+repository, while allowing correlated error/denial results and URLs quoted in docs.
 
 An omitted project uses the fixture default; explicit paths are resolved against that
 root and must select the same project. Unrelated successes, sibling result blocks and

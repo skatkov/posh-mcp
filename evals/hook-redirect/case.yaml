@@ -19,12 +19,6 @@ execution:
   allowed_tools: [Read, Grep, Glob, WebFetch, mcp__plugin_posh_docs]
 runs: 3
 graders:
-  - type: regex
-    name: hook-redirected-the-source-read
-    target: trace
-    pattern: 'POSH has local documentation for'
-    arm: with-only
-    weight: 2
   - type: llm
     name: answered-from-the-documentation-not-the-vendored-copy
     criteria: >
