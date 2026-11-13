@@ -267,6 +267,26 @@ test('redirects once per gem per session, so a second attempt proceeds', () => {
   assert.equal(toolUse(dir, { command: 'bundle show kamal' }, { tool: 'Bash', session: 's1', data }).permissionDecision, 'deny');
 });
 
+test('moving one session to another Ruby project gets its own redirect', () => {
+  const data = fs.mkdtempSync(path.join(tmp, 'data-'));
+  for (const cwd of [project('Gemfile.lock'), project('Gemfile.lock')]) {
+    const call = () => toolUse(cwd, { command: 'bundle show kamal' }, { tool: 'Bash', data });
+    assert.equal(call().permissionDecision, 'deny');
+    assert.equal(call(), null);
+  }
+});
+
+test('shared policy returns a harness-neutral reason from normalized JSON input', () => {
+  const cwd = project('Gemfile.lock');
+  const payload = JSON.stringify({ cwd, session_id: 'neutral', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } });
+  const result = execFileSync('ruby', [path.join(repo, 'hooks/posh-lookup.rb')], {
+    cwd: project('package.json'), input: payload, encoding: 'utf8',
+    env: { ...process.env, PATH: `${poshBin}:${process.env.PATH}`, CLAUDE_PLUGIN_DATA: fs.mkdtempSync(path.join(tmp, 'data-')), FAKE_POSH_PROJECT_JSON: JSON.stringify(cwd) },
+  });
+  assert.deepEqual(Object.keys(JSON.parse(result)), ['reason']);
+  assert.match(JSON.parse(result).reason, /gem:kamal/);
+});
+
 test('matches a gem directory with no trailing slash, as `cd <gem dir> && ...` leaves', () => {
   const dir = project('Gemfile.lock');
   const command = `cd ${gemDir('geneva_drive', '0.7.0')} && sed -n '300,400p' lib/geneva_drive/executor.rb`;

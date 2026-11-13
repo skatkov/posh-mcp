@@ -117,11 +117,8 @@ case $event in
     handle_command
     ;;
   PreToolUse)
-    # Worktrees and `cd` can move away from the initial CLAUDE_PROJECT_DIR.
-    CLAUDE_PROJECT_DIR=$PWD
-    if active && command -v ruby >/dev/null 2>&1; then
-      project=$(ruby_project) || exit 0
-      ruby "$root/hooks/posh-pre-tool-use.rb" "$project"
+    if command -v ruby >/dev/null 2>&1; then
+      ruby "$root/hooks/posh-pre-tool-use.rb" "${2:-claude}"
     fi
     ;;
 esac
