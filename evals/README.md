@@ -33,7 +33,8 @@ Each flag is load-bearing:
   sandbox home, so the helper symlinks the real `~/.local/{share,state}/posh` into it
   instead, without replacing existing directories. This gives trusted plugin processes
   access to the operator's POSH stores; it is not a hermetic test. Custom POSH storage
-  locations are not currently auto-discovered. `typo-control` does not need those links.
+  locations are not currently auto-discovered. `typo-control` prepares the same known
+  docset too, so it exercises an operational hook rather than an unavailable POSH fallback.
   Without `--scaffold`, the suite has no fixtures and its scores are not meaningful.
 - `--allow-tools` grants what the cases ask for. `Bash` is deliberately absent: granting a
   shell requires a sandbox backend (`bubblewrap` and `socat`), and without one the run is
@@ -97,6 +98,9 @@ the agent reached for; and the gem is one POSH has a docset for.
 `target: { source: file, path: README.md }`. `target: files` means a list of newly created
 paths, not their contents. A matching Edit argument alone would not prove the edit succeeded.
 Six zero-call graders reject every POSH MCP tool, including unsuccessful attempts.
+Its fixture's internal CLI preflight is not a model-issued lookup. A deterministic
+check also proves that a known-gem source read is denied in that same fixture while
+the README read is allowed.
 
 The adoption cases require search before a read of the expected API page or registry
 guide. The *documentation-read-succeeded* regex then correlates the fixture's startup
