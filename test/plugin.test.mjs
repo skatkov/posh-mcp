@@ -302,6 +302,8 @@ for (const [name, tool, tool_input] of [
   ['relative vendored source', 'Grep', { path: 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib', pattern: 'registry' }],
   ['a source glob', 'Glob', { pattern: '**/vendor/bundle/**/gems/kamal-2.12.0/lib/**/*.rb' }],
   ['a quoted source locator', 'Bash', { command: 'bundle show "kamal"' }],
+  ['a bundled source locator', 'Bash', { command: 'bundle exec gem contents kamal' }],
+  ['a literal-leading source read', 'Bash', { command: "sed -n '1,30p' /app/vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib/kamal.rb" }],
   ['a raw GitHub URL', 'WebFetch', { url: 'https://raw.githubusercontent.com/basecamp/kamal/v2.12.0/README.md' }],
 ]) {
   test(`intercepts ${name}`, () => {
@@ -334,6 +336,11 @@ for (const [name, tool, tool_input] of [
   ['a lookalike documentation host', 'WebFetch', { url: 'https://rubygems.org.example.com/gems/kamal' }],
   ['a documentation URL in shell output', 'Bash', { command: 'echo https://rubygems.org/gems/kamal' }],
   ['a source locator in shell output', 'Bash', { command: 'echo "bundle show kamal"' }],
+  ['an unquoted locator in a documentation edit', 'Bash', { command: 'echo bundle show kamal >> README.md' }],
+  ['a fetch command printed as data', 'Bash', { command: 'echo curl https://rubygems.org/gems/kamal' }],
+  ['a read command printed as data', 'Bash', { command: `printf '%s\\n' cat ${gemDir('kamal', '2.12.0')}/lib/kamal.rb` }],
+  ['a source path in a later echo command', 'Bash', { command: `ls app && echo ${gemDir('kamal', '2.12.0')}` }],
+  ['an opaque command containing a locator', 'Bash', { command: 'ruby -e "bundle show kamal"' }],
   ['a normalized path outside vendor/bundle', 'Read', { file_path: '/repo/vendor/bundle/../../app/models/report.rb' }],
   ['an ordinary command', 'Bash', { command: 'bin/rails test test/models/library_test.rb' }],
   ['a source path in a Bash description', 'Bash', { command: 'pwd', description: `Looking for ${gemDir('kamal', '2.12.0')}` }],
@@ -411,6 +418,12 @@ test('recognizes custom RubyGems homes without treating sibling application file
 test('leaves a bundler path that is not being read alone', () => {
   const dir = project('Gemfile.lock');
   assert.equal(toolUse(dir, { command: 'bundle config set --local path vendor/bundle' }, { tool: 'Bash' }), null);
+});
+
+test('incomplete source locator commands stay allowed', () => {
+  for (const command of ['gem', 'gem contents', 'bundle', 'bundle show', '']) {
+    assert.equal(toolUse(project('Gemfile.lock'), { command }, { tool: 'Bash' }), null);
+  }
 });
 
 test('interception is registered for Claude Code only', () => {

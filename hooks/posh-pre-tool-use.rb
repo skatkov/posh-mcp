@@ -43,23 +43,26 @@ rescue URI::InvalidURIError
 end
 
 def lookup_for_command(command)
-  # shortcut: tokenize common commands, not arbitrary shell syntax;
-  # extend from observed misses rather than adding a shell parser.
+  # shortcut: recognize literal-leading commands, not arbitrary shell syntax;
+  # compound-command tails are left to normal permissions.
   words = Shellwords.split(command)
-  words.each_cons(3) do |tool, action, name|
+  words = words.drop(2) if words[0, 2] == %w[bundle exec]
+  tool, *arguments = words
+  arguments = arguments.take_while { |word| !%w[&& || | ;].include?(word) }
+  case tool
+  when "gem", "bundle"
+    action, name = arguments
     if ((tool == "gem" && %w[contents which unpack].include?(action)) ||
-        (tool == "bundle" && %w[show open].include?(action))) && name.match?(/\A[a-zA-Z0-9_][a-zA-Z0-9_.-]*\z/)
+        (tool == "bundle" && %w[show open].include?(action))) && name&.match?(/\A[a-zA-Z0-9_][a-zA-Z0-9_.-]*\z/)
       return "gem:#{name}"
     end
-  end
-  if words.any? { |word| %w[curl wget].include?(word) }
-    words.each do |word|
+  when "curl", "wget"
+    arguments.each do |word|
       lookup = lookup_for_url(word)
       return lookup if lookup
     end
-  end
-  if words.any? { |word| %w[cat sed grep rg find ls head tail awk cd].include?(word) }
-    words.each do |word|
+  when "cat", "sed", "grep", "rg", "find", "ls", "head", "tail", "awk", "cd"
+    arguments.each do |word|
       lookup = lookup_for_path(word)
       return lookup if lookup
     end
