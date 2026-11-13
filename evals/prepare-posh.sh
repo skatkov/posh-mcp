@@ -21,11 +21,19 @@ posh docsets --json --project "$PWD" | node -e '
     console.error("POSH eval: docsets failed; check POSH activation.");
     process.exit(1);
   }
-  const [ref, version, availability] = process.argv.slice(1);
-  const row = result.data.find(item => item.ref === ref && item.version === version);
-  const available = !!(row && Array.isArray(row.kinds) && row.kinds.length);
-  if (!row || available !== (availability !== "missing")) {
-    console.error(`POSH eval: unexpected docset availability for ${ref} ${version}; check activation and sync.`);
+  const [ref, version, name, availability, expectationsPath] = process.argv.slice(1);
+  const expectedReads = JSON.parse(require("node:fs").readFileSync(expectationsPath, "utf8"));
+  if (!Object.hasOwn(expectedReads, name)) {
+    console.error(`POSH eval: unknown fixture ${name}`);
     process.exit(1);
   }
-' "$1" "$2" "${3:-available}"
+  const expected = expectedReads[name];
+  const [library, kind] = expected ? expected.split("/") : [];
+  const row = result.data.find(item => item.ref === ref && item.version === version);
+  const available = !!(row && Array.isArray(row.kinds) && row.kinds.length);
+  if (!row || available !== (availability !== "missing") ||
+      (expected && (library !== ref || !row.kinds.includes(kind)))) {
+    console.error(`POSH eval: unexpected docset availability for ${ref} ${version} (${kind || availability}); check activation and sync.`);
+    process.exit(1);
+  }
+' "$1" "$2" "$3" "${4:-available}" "$(dirname -- "$0")/expected-reads.json"

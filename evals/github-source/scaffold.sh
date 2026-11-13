@@ -13,4 +13,4 @@ DEPENDENCIES
   nokogiri
 LOCK
 
-sh "$(dirname -- "$0")/../prepare-posh.sh" gem:nokogiri 1.19.7
+sh "$(dirname -- "$0")/../prepare-posh.sh" gem:nokogiri 1.19.7 github-source

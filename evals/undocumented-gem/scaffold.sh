@@ -26,4 +26,4 @@ end
 RUBY
 
 # A broken POSH installation must not masquerade as an undocumented-gem fallback.
-sh "$(dirname -- "$0")/../prepare-posh.sh" gem:widget_press 0.1.0 missing
+sh "$(dirname -- "$0")/../prepare-posh.sh" gem:widget_press 0.1.0 undocumented-gem missing

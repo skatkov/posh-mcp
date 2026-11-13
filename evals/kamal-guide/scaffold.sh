@@ -13,4 +13,4 @@ DEPENDENCIES
   kamal
 LOCK
 
-sh "$(dirname -- "$0")/../prepare-posh.sh" gem:kamal 2.12.0
+sh "$(dirname -- "$0")/../prepare-posh.sh" gem:kamal 2.12.0 kamal-guide

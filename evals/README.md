@@ -70,11 +70,13 @@ list-price cost ceiling, and pin `--model` and `--judge-model` for comparisons.
 
 ## Prerequisites
 
-Use Claude Code 2.1.269 or later and Ruby with its JSON, Open3 and Psych libraries.
+Use Claude Code 2.1.269 or later and Node 18.3+.
 POSH must be activated, and must have docsets for the versions the scaffolds lock:
 `activerecord 8.1.4.1`, `kamal 2.12.0`, `nokogiri 1.19.7`. Check with `posh docsets` in a
 project that locks them; `posh sync` fetches what is missing. The preflight rejects missing
-or wrong-version docsets. For `undocumented-gem`, it verifies that POSH works but that
+or wrong-version docsets, and requires the documentation kind named by the case's
+expected read in `expected-reads.json` (including Kamal's `guide` kind).
+For `undocumented-gem`, it verifies that POSH works but that
 `widget_press` has no docs. There are no MCP mocks, and no credentials are committed.
 
 ## The cases
