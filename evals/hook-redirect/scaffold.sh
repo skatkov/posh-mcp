@@ -28,4 +28,4 @@ module ActiveRecord
 end
 RUBY
 
-sh "$(dirname -- "$0")/../prepare-posh.sh" gem:activerecord 8.1.4.1
+sh "$(dirname -- "$0")/../prepare-posh.sh" gem:activerecord 8.1.4.1 hook-redirect
