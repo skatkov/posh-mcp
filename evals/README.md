@@ -14,8 +14,10 @@ They are not a representative sample of all Ruby tasks.
 claude plugin eval . \
   --ablation with-without \
   --scaffold --trust-plugin \
-  --allow-real-servers --no-publish \
-  --allow-tools WebFetch Edit mcp__plugin_posh_docs
+  --allow-real-servers --no-publish --keep-temp \
+  --json evals/results/latest.json \
+  --allow-tools WebFetch Edit mcp__plugin_posh_docs &&
+node evals/check-evidence.mjs evals/results/latest.json
 ```
 
 Each flag is load-bearing:
@@ -46,8 +48,10 @@ against no plugin. It does not isolate the hook's contribution from the instruct
 Plugin-only graders are marked `arm: with-only`: they become pass/fail indicators and
 do not inflate the quality-score delta by penalizing the baseline for not having POSH.
 Inspect those indicators as well as scores; a two-arm run can score 1.00 while POSH
-adoption fails. Use `--ablation none` to make all adoption indicators count toward the
-pass threshold during regression testing.
+adoption fails. The separate evidence checker must pass too: it validates successful
+reads in the with-plugin arm only, without adding impossible requirements to the baseline.
+`--keep-temp` is required because it reads each run's retained `tracePath`.
+It rejects partial reports, incomplete run counts, errored runs and missing traces.
 
 For a cheaper first check after changing a grader:
 
@@ -103,17 +107,17 @@ check also proves that a known-gem source read is denied in that same fixture wh
 the README read is allowed.
 
 The adoption cases require search before a read of the expected API page or registry
-guide. The *documentation-read-succeeded* regex then correlates the fixture's startup
-directory, that read's tool ID and document ref, and its successful structured result.
-An explicit `project` must equal the fixture root; omission is allowed because the
-isolated server defaults to that root. An unrelated successful read cannot satisfy a
-failed expected read, and a quoted success message is not evidence.
+guide. `check-evidence.mjs` parses JSONL records with `JSON.parse`, matches read calls
+and result blocks by tool ID, and verifies the project, returned ref and nonempty
+document content. Expected refs live once in `expected-reads.json`; `null` means a
+control case has no required read. JSON field order does not matter.
 
-These deterministic checks use the JSONL event shape observed in Claude Code 2.1.323:
-`system/init`, `assistant` tool calls, and `user` results with POSH's `structuredContent`.
-They fail closed if that shape changes. When updating Claude Code, inspect a retained
-trace if this indicator fails despite apparently correct behavior. Unit tests cover
-mixed results, wrong projects, mismatched IDs, failed reads and parallel result ordering.
+An omitted project uses the fixture default; explicit paths are resolved against that
+root and must select the same project. Unrelated successes, sibling result blocks and
+quoted success messages cannot satisfy a failed read. The checker consumes each result
+block's actual MCP JSON content, not shared transport metadata. Unrecognized evidence
+fails closed. Unit tests cover reordered fields, MCP text arrays, mixed results, wrong
+projects, mismatched IDs, failed reads, partial reports and parallel result ordering.
 
 ## Validation status
 
@@ -122,8 +126,7 @@ scope, all six scaffolds, and deterministic grader checks without a Claude accou
 real POSH licence. The scaffolds and redirect/retry behavior have also been smoke-tested
 against real POSH on Linux.
 
-The revised suite has **not** completed live agent runs or a with/without baseline:
-the last attempted live run on 2026-11-13 stopped on the account's five-hour limit.
-Older reports under ignored `results/` predate the revised graders and are not results
-for this version. Do not quote a measured adoption improvement until the full comparison
-finishes successfully.
+The latest full comparisons were interrupted, so there is no completed with/without
+baseline for this version. Older reports under ignored `results/` predate the JSONL
+checker and are not results for this version. Do not quote a measured adoption
+improvement until both the full comparison and the evidence checker finish successfully.
