@@ -3,28 +3,63 @@ require "json"
 require "open3"
 require "fileutils"
 require "shellwords"
+require "uri"
+require "rubygems"
 
-def gem_ref(target, source: true)
-  if source
-    match = target.match(%r{(?:\A|/)gems/([a-zA-Z0-9_.-]+)-[0-9][0-9a-zA-Z.]*})
-    return match[1] if match
-  end
+def lookup_for_path(path)
+  path = File.expand_path(path)
+  installed = path.match?(%r{/(?:vendor/bundle|ruby/gems|gems/\d+\.\d+(?:\.\d+)?|\.gem/(?:ruby|jruby)/[^/]+)(?:/|\z)}) ||
+    Gem.path.any? { |home| path == home || path == "#{home}/gems" || path.start_with?("#{home}/gems/") }
+  return unless installed
 
-  case target
-  when %r{https?://(?:www\.)?(?:rubydoc\.info|rubygems\.org)/gems/([a-zA-Z0-9_.-]+)}
-    return Regexp.last_match(1)
-  when %r{https?://rubygems\.org/downloads/([a-zA-Z0-9_.-]+)-[0-9][0-9a-zA-Z.]*\.gem}
-    return Regexp.last_match(1)
-  when %r{https?://(?:api|guides)\.rubyonrails\.org(?:/|\z)}
-    return "rails"
-  when %r{https?://github\.com/[a-zA-Z0-9_.-]+/([a-zA-Z0-9_.-]+)/(?:blob|raw)/},
-       %r{https?://raw\.githubusercontent\.com/[a-zA-Z0-9_.-]+/([a-zA-Z0-9_.-]+)/}
-    return Regexp.last_match(1)
-  end
+  match = path.match(%r{/gems/([a-zA-Z0-9_.-]+)-[0-9][0-9a-zA-Z.]*})
+  match ? "gem:#{match[1]}" : :gem_tree
+end
 
+def lookup_for_url(url)
+  uri = URI.parse(url)
+  return unless %w[http https].include?(uri.scheme)
+
+  match = case uri.host&.downcase
+  when "rubydoc.info", "www.rubydoc.info", "rubygems.org", "www.rubygems.org"
+    uri.path.match(%r{\A/gems/([a-zA-Z0-9_.-]+)(?:/|\z)}) ||
+      uri.path.match(%r{\A/downloads/([a-zA-Z0-9_.-]+)-[0-9][0-9a-zA-Z.]*\.gem\z})
+  when "api.rubyonrails.org", "guides.rubyonrails.org"
+    return "gem:rails"
   # shortcut: repository names are only a hint, not a gem-to-repository map;
   # add metadata matching if real transcripts show differently named repos being missed.
-  return "_gem_root" if source && target.match?(%r{(?:\A|/)vendor/bundle(?:/|\z)|/gems(?:/|\z)})
+  when "github.com"
+    uri.path.match(%r{\A/[a-zA-Z0-9_.-]+/([a-zA-Z0-9_.-]+)/(?:blob|raw)/})
+  when "raw.githubusercontent.com"
+    uri.path.match(%r{\A/[a-zA-Z0-9_.-]+/([a-zA-Z0-9_.-]+)/})
+  end
+  "gem:#{match[1]}" if match
+rescue URI::InvalidURIError
+  nil
+end
+
+def lookup_for_command(command)
+  # shortcut: tokenize common commands, not arbitrary shell syntax;
+  # extend from observed misses rather than adding a shell parser.
+  words = Shellwords.split(command)
+  words.each_cons(3) do |tool, action, name|
+    if ((tool == "gem" && %w[contents which unpack].include?(action)) ||
+        (tool == "bundle" && %w[show open].include?(action))) && name.match?(/\A[a-zA-Z0-9_][a-zA-Z0-9_.-]*\z/)
+      return "gem:#{name}"
+    end
+  end
+  if words.any? { |word| %w[curl wget].include?(word) }
+    words.each do |word|
+      lookup = lookup_for_url(word)
+      return lookup if lookup
+    end
+  end
+  if words.any? { |word| %w[cat sed grep rg find ls head tail awk cd].include?(word) }
+    words.each do |word|
+      lookup = lookup_for_path(word)
+      return lookup if lookup
+    end
+  end
 end
 
 begin
@@ -40,30 +75,27 @@ begin
   exit 0 unless cwd == project || cwd.start_with?("#{project}/")
 
   args = input["tool_input"]
-  gem = case input["tool_name"]
+  lookup = case input["tool_name"]
   when "Read"
-    gem_ref(args.fetch("file_path"))
+    lookup_for_path(args.fetch("file_path"))
   when "Grep"
-    gem_ref(args.fetch("path", cwd))
+    lookup_for_path(args.fetch("path", cwd))
   when "Glob"
-    gem_ref(File.join(args.fetch("path", cwd), args.fetch("pattern")))
+    lookup_for_path(File.join(args.fetch("path", cwd), args.fetch("pattern")))
   when "WebFetch"
-    gem_ref(args.fetch("url"), source: false)
+    lookup_for_url(args.fetch("url"))
   when "Bash"
-    command = args.fetch("command")
-    # shortcut: recognize common source-reading commands, not arbitrary shell programs;
-    # extend from observed misses rather than trying to parse the shell.
-    match = command.match(/(?:\A|[\s;&|])(?:gem\s+(?:contents|which|unpack)|bundle\s+(?:show|open))\s+["']?([a-zA-Z0-9_][a-zA-Z0-9_.-]*)/)
-    match ? match[1] : gem_ref(command, source: command.match?(/(?:\A|[\s;&|])(?:cat|sed|grep|rg|find|ls|head|tail|awk|cd)\s/))
+    lookup_for_command(args.fetch("command"))
   end
-  exit 0 unless gem
+  exit 0 unless lookup
+  ref = lookup == :gem_tree ? nil : lookup
 
   state = ENV["CLAUDE_PLUGIN_DATA"] || File.join(ENV.fetch("XDG_CACHE_HOME", File.join(Dir.home, ".cache")), "posh")
-  marker = File.join(state, "nudged", "#{session}.#{gem}")
+  marker = File.join(state, "nudged", "#{session}.#{ref || 'gem-tree'}")
   exit 0 if File.exist?(marker)
 
   command = ["posh", "docsets", "--json", "--project", project]
-  command += ["--filter", "gem:#{gem}"] unless gem == "_gem_root"
+  command += ["--filter", ref] if ref
   stdout, _stderr, status = Open3.capture3(*command)
   exit 0 unless status.success?
 
@@ -73,7 +105,7 @@ begin
 
   library = docs["data"].find do |row|
     row.is_a?(Hash) && row["ref"].is_a?(String) && row["ref"].start_with?("gem:") &&
-      (gem == "_gem_root" || row["ref"] == "gem:#{gem}") &&
+      (!ref || row["ref"] == ref) &&
       row["kinds"].is_a?(Array) && !row["kinds"].empty?
   end
   exit 0 unless library
@@ -83,12 +115,12 @@ begin
   FileUtils.mkdir_p(File.dirname(marker))
   Dir.mkdir(marker)
 
-  subject = gem == "_gem_root" ? "the installed source of the gems this project locks" : "#{library['ref']} #{library['version']}, the version this project locks"
+  subject = ref ? "#{ref} #{library['version']}, the version this project locks" : "the installed source of the gems this project locks"
   query = { query: "<symbol or page name>", project: project }
-  query[:ref] = library["ref"] unless gem == "_gem_root"
+  query[:ref] = ref if ref
   read = { ref: "<returned document ref>", project: project }
   cli = "posh search '<symbol>'"
-  cli += " --ref #{library['ref']}" unless gem == "_gem_root"
+  cli += " --ref #{ref}" if ref
   cli += " --project #{Shellwords.escape(project)}"
   reason = <<~TEXT
     POSH has local documentation for #{subject}.
