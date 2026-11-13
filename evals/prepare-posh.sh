@@ -15,11 +15,17 @@ for d in share state; do
 done
 
 # Fail before launching a model if licence or fixture docs are unavailable.
-posh docsets --json --project "$PWD" | ruby -rjson -e '
-  result = JSON.parse(STDIN.read)
-  abort "POSH eval: docsets failed; check POSH activation." unless result["ok"] == true
-  row = result.fetch("data").find { |item| item["ref"] == ARGV[0] && item["version"] == ARGV[1] }
-  available = row && !row.fetch("kinds", []).empty?
-  expected = ARGV[2] != "missing"
-  abort "POSH eval: unexpected docset availability for #{ARGV[0]} #{ARGV[1]}; check activation and sync." unless row && !!available == expected
+posh docsets --json --project "$PWD" | node -e '
+  const result = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+  if (result.ok !== true) {
+    console.error("POSH eval: docsets failed; check POSH activation.");
+    process.exit(1);
+  }
+  const [ref, version, availability] = process.argv.slice(1);
+  const row = result.data.find(item => item.ref === ref && item.version === version);
+  const available = !!(row && Array.isArray(row.kinds) && row.kinds.length);
+  if (!row || available !== (availability !== "missing")) {
+    console.error(`POSH eval: unexpected docset availability for ${ref} ${version}; check activation and sync.`);
+    process.exit(1);
+  }
 ' "$1" "$2" "${3:-available}"
