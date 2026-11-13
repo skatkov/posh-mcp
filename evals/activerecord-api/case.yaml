@@ -26,19 +26,19 @@ graders:
       runs neither validations nor callbacks, and that updated_at/updated_on is therefore not
       updated. Does not hedge about the version or claim it could not check.
     weight: 2
-  - type: regex
-    name: read-activerecord-docs-from-posh
-    target: trace
-    pattern: 'posh://gem:activerecord'
-    arm: with-only
-    weight: 2
   - type: tool_order
     name: searched-before-reading
     before: mcp__plugin_posh_docs__search
-    after: mcp__plugin_posh_docs__read
+    after:
+      tool: mcp__plugin_posh_docs__read
+      input_match: '"ref"\s*:\s*"(?:posh://)?gem:activerecord/rdoc/ActiveRecord/Relation\.md(?:#method-i-update_all)?"'
     arm: with-only
   - type: regex
     name: documentation-read-succeeded
     target: trace
-    pattern: 'Document read'
+    # Capture the fixture cwd (1) and expected read's tool ID (2), then require that
+    # same call's successful structured result. An omitted project uses the fixture default.
+    pattern: '^\{"type"\s*:\s*"system"[^\n]*"subtype"\s*:\s*"init"[^\n]*"cwd"\s*:\s*"([^"]+)"[^\n]*\n[\s\S]*?^\{"type"\s*:\s*"assistant"[^\n]*\{"type"\s*:\s*"tool_use",\s*"id"\s*:\s*"([^"]+)",\s*"name"\s*:\s*"mcp__plugin_posh_docs__read",\s*"input"\s*:\s*\{(?=[^}\n]*"ref"\s*:\s*"(?:posh://)?gem:activerecord/rdoc/ActiveRecord/Relation\.md(?:#method-i-update_all)?")(?:(?=[^}\n]*"project"\s*:\s*"\1/?")|(?![^}\n]*"project"\s*:))[^}\n]*\}[^\n]*\n[\s\S]*?^\{"type"\s*:\s*"user"[^\n]*"tool_use_id"\s*:\s*"\2"[^\n]*"structuredContent"\s*:\s*\{(?=[^\n]*"ref"\s*:\s*"(?:posh://)?gem:activerecord/rdoc/ActiveRecord/Relation\.md(?:#method-i-update_all)?")(?=[^\n]*"ok"\s*:\s*true)(?=[^\n]*"summary"\s*:\s*"Document read")'
+    flags: m
+    weight: 2
     arm: with-only
