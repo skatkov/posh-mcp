@@ -6,20 +6,19 @@ import path from 'node:path';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { expectedReads } from '../evals/check-evidence.mjs';
+import { parse } from 'yaml';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const evals = path.join(repo, 'evals');
 const names = fs.readdirSync(evals).filter((name) => fs.existsSync(path.join(evals, name, 'case.yaml')));
-const cases = JSON.parse(execFileSync('ruby', ['-rpsych', '-rjson', '-e',
-  'puts JSON.generate(ARGV.map { |file| Psych.safe_load_file(file) })',
-  ...names.map((name) => path.join(evals, name, 'case.yaml')),
-], { encoding: 'utf8' }));
+const cases = names.map((name) => parse(fs.readFileSync(path.join(evals, name, 'case.yaml'), 'utf8')));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'posh-evals-'));
 after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const real = path.join(tmp, 'real-home');
 const bin = path.join(tmp, 'bin');
 fs.mkdirSync(bin);
+fs.writeFileSync(path.join(bin, 'ruby'), '#!/bin/sh\necho "Eval scaffolds must not invoke Ruby" >&2\nexit 99\n', { mode: 0o755 });
 for (const kind of ['share', 'state']) {
   fs.mkdirSync(path.join(real, '.local', kind, 'posh'), { recursive: true });
 }
