@@ -1,0 +1,44 @@
+schema_version: "1.1"
+name: activerecord-api
+description: >
+  An API question about a locked gem. Reading installed gem source was the observed path:
+  activerecord source was opened 8 times and other gems' source ~200 times across sessions
+  that all carried the POSH ruleset.
+tags: [adoption, api]
+context:
+  scaffold_script: scaffold.sh
+execution:
+  prompt: |
+    Report.mark_all_stale in app/models/report.rb uses update_all.
+
+    In the Active Record version this project locks, does that call run validations and
+    callbacks, and does it update updated_at? Answer in two or three sentences and say
+    where you got it.
+  max_turns: 12
+  timeout_seconds: 300
+  allowed_tools: [Read, Grep, Glob, WebFetch, mcp__plugin_posh_docs]
+runs: 3
+graders:
+  - type: llm
+    name: answers-from-the-locked-version
+    criteria: >
+      States that update_all issues a single SQL UPDATE without instantiating models, so it
+      runs neither validations nor callbacks, and that updated_at/updated_on is therefore not
+      updated. Does not hedge about the version or claim it could not check.
+    weight: 2
+  - type: regex
+    name: read-activerecord-docs-from-posh
+    target: trace
+    pattern: 'posh://gem:activerecord'
+    arm: with-only
+    weight: 2
+  - type: tool_order
+    name: searched-before-reading
+    before: mcp__plugin_posh_docs__search
+    after: mcp__plugin_posh_docs__read
+    arm: with-only
+  - type: regex
+    name: documentation-read-succeeded
+    target: trace
+    pattern: 'Document read'
+    arm: with-only

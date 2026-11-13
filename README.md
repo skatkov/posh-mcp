@@ -121,6 +121,35 @@ In Codex, use `$posh` in place of `/posh`. The mode is saved in
 `~/.config/posh/agent-mode` and shared by all three agents. These plugins are
 not a claim that Anthropic, OpenAI, or OpenCode has reviewed or listed them.
 
+#### Redirecting gem source reads (Claude Code)
+
+Instructions are advisory, and an agent deep in a task tends to read the
+installed gem source anyway. In Claude Code the plugin also declines that one
+call and says what to run instead: reading a gem's source, or fetching its
+documentation over HTTP, is declined once per gem per session when POSH has a
+docset for that gem in this project.
+
+The check uses `posh docsets` for the current working directory, including
+after entering a worktree. It requires a matching locked gem with installed
+documentation; private gems with docs are treated the same as public ones.
+Gems with no local docs, git-sourced gems, non-Ruby projects in auto mode,
+and `/posh off` are left alone. A broad search of the gem tree gets one
+separate nudge when any locked gem has local docs.
+
+The decision parser uses Ruby's standard library, with no third-party gems.
+Missing Ruby, missing or failing POSH, malformed responses, and unwritable
+session state all leave normal tool permissions unchanged. A retry of the
+same lookup goes through: this is an adoption nudge, not a security boundary
+or a ban on implementation-level source inspection. GitHub matching uses
+repository names as gem-name hints; it does not cover every repository or
+arbitrary shell program. Codex and OpenCode interception are not enabled.
+
+Set `POSH_HOOK_DECISION=ask` to be asked instead of blocked, which is the
+gentler setting while trying this out. Session markers live in the plugin's
+data directory (or `$XDG_CACHE_HOME/posh/nudged`, defaulting to
+`~/.cache/posh/nudged`). [`evals/`](evals/README.md) measures whether any of
+it changes what the agent does.
+
 ### Cursor plugin
 
 Install and activate POSH first, then paste this into the browser address bar.

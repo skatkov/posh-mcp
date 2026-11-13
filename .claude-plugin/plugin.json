@@ -11,5 +11,5 @@
   "repository": "https://github.com/skatkov/posh-mcp",
   "license": "LicenseRef-POSH-Proprietary",
   "keywords": ["ruby", "rails", "documentation", "mcp"],
-  "hooks": "./hooks/claude-codex-hooks.json"
+  "hooks": ["./hooks/claude-codex-hooks.json", "./hooks/claude-hooks.json"]
 }

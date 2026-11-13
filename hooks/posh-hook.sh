@@ -46,9 +46,13 @@ ruleset() {
 }
 
 # Only our own text reaches this, never the prompt, and SKILL.md has no tabs.
+json_string() {
+  printf '%s\n' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk '{ printf "%s%s", (NR > 1 ? "\\n" : ""), $0 }'
+}
+
 emit() {
   printf '{"hookSpecificOutput":{"hookEventName":"%s","additionalContext":"' "$event"
-  printf '%s\n' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk '{ printf "%s%s", (NR > 1 ? "\\n" : ""), $0 }'
+  json_string "$1"
   printf '"}}\n'
 }
 
@@ -108,6 +112,13 @@ case $event in
     ;;
   UserPromptSubmit)
     handle_command
+    ;;
+  PreToolUse)
+    # Worktrees and `cd` can move away from the initial CLAUDE_PROJECT_DIR.
+    CLAUDE_PROJECT_DIR=$PWD
+    if active && command -v ruby >/dev/null 2>&1; then
+      ruby "$root/hooks/posh-pre-tool-use.rb"
+    fi
     ;;
 esac
 exit 0

@@ -2,16 +2,17 @@
 // node --test isolates each file in its own process, so setting XDG_CONFIG_HOME is safe.
 
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { before, beforeEach, test } from 'node:test';
+import { after, before, beforeEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hook = path.join(repo, 'hooks/posh-hook.sh');
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'posh-plugin-')));
+after(() => fs.rmSync(tmp, { recursive: true, force: true }));
 process.env.XDG_CONFIG_HOME = path.join(tmp, 'config');
 const modeFile = path.join(tmp, 'config/posh/agent-mode');
 const MARKER = "POSH: docs for this project's exact versions";
@@ -23,11 +24,57 @@ const project = (...files) => {
   return dir;
 };
 
-function runHook(event, cwd, stdin = '') {
+function runHook(event, cwd, stdin = '', extraEnv = {}) {
   const { CLAUDE_PROJECT_DIR, ...env } = process.env;
-  const out = execFileSync('sh', [hook, event], { cwd, env, input: stdin, encoding: 'utf8' });
+  const out = execFileSync('sh', [hook, event], { cwd, env: { ...env, ...extraEnv }, input: stdin, encoding: 'utf8' });
   return out ? JSON.parse(out).hookSpecificOutput : null;
 }
+
+// A fake `posh` keeps the PreToolUse tests off this machine's licence and synced docsets.
+const DOCSETS = {
+  'gem:activerecord': { version: '8.1.4.1', kinds: ['rdoc'] },
+  'gem:kamal': { version: '2.12.0', kinds: ['rdoc', 'guide'] },
+  'gem:nokogiri': { version: '1.19.7', kinds: ['rdoc'] },
+  'gem:rails': { version: '8.1.4.1', kinds: ['rdoc'] },
+  'gem:geneva_drive': { version: '0.7.0', kinds: ['yard'] },
+  'gem:geneva_drive_admin': { version: '0.6.0', kinds: [] },
+};
+const poshBin = path.join(tmp, 'bin');
+before(() => {
+  fs.mkdirSync(poshBin, { recursive: true });
+  const cases = Object.entries(DOCSETS)
+    .map(([ref, spec]) => `  *'--filter ${ref}') printf '%s' '${JSON.stringify([{ ref, ...spec }])}' ;;`)
+    .join('\n');
+  // Without --filter the real posh lists the whole project, which is how the hook
+  // asks whether this project has any local docs at all.
+  const all = JSON.stringify(Object.entries(DOCSETS).map(([ref, spec]) => ({ ref, ...spec })));
+  fs.writeFileSync(
+    path.join(poshBin, 'posh'),
+    `#!/bin/sh
+[ "$1" = docsets ] || exit 1
+if [ -n "\${FAKE_POSH_RESPONSE+x}" ]; then printf '%s' "$FAKE_POSH_RESPONSE"; exit; fi
+printf '%s' '{"ok":true,"project_path":' "$FAKE_POSH_PROJECT_JSON" ',"data":'
+case "$*" in
+${cases}
+  *--filter*) printf '%s' '[]' ;;
+  *) printf '%s' '${all}' ;;
+esac
+printf '}'
+`,
+    { mode: 0o755 },
+  );
+});
+
+// A fresh marker directory per call, unless a test passes one to reuse across calls.
+const toolUse = (cwd, tool_input, { session = 's', tool = 'Read', data, env = {} } = {}) =>
+  runHook('PreToolUse', cwd, JSON.stringify({ session_id: session, cwd, hook_event_name: 'PreToolUse', tool_name: tool, tool_input }), {
+    PATH: `${poshBin}:${process.env.PATH}`,
+    CLAUDE_PLUGIN_DATA: data ?? fs.mkdtempSync(path.join(tmp, 'data-')),
+    FAKE_POSH_PROJECT_JSON: JSON.stringify(cwd),
+    ...env,
+  });
+
+const gemDir = (gem, version) => `/home/x/.local/share/mise/installs/ruby/4.0.9/lib/ruby/gems/4.0.0/gems/${gem}-${version}`;
 
 const prompt = (text) => JSON.stringify({ session_id: 'x', cwd: '/x', hook_event_name: 'UserPromptSubmit', prompt: text });
 
@@ -196,4 +243,218 @@ test('OpenCode /posh persists the mode before the turn and passes other text thr
 test('the module has only a default export (OpenCode treats exported functions as plugins)', async () => {
   const mod = await import(path.join(repo, 'opencode/posh.mjs'));
   assert.deepEqual(Object.keys(mod), ['default']);
+});
+
+// --- PreToolUse: the gem documentation routes -------------------------------
+
+test('denies installed gem source and names the POSH call to make instead', () => {
+  const dir = project('Gemfile.lock');
+  const out = toolUse(dir, { file_path: `${gemDir('activerecord', '8.1.4.1')}/lib/active_record/relation.rb` });
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /gem:activerecord 8\.1\.4\.1/);
+  assert.match(out.permissionDecisionReason, /"ref":"gem:activerecord"/);
+  assert.match(out.permissionDecisionReason, /posh search '<symbol>' --ref gem:activerecord/);
+});
+
+test('redirects once per gem per session, so a second attempt proceeds', () => {
+  const dir = project('Gemfile.lock');
+  const data = fs.mkdtempSync(path.join(tmp, 'data-'));
+  const call = (session) => toolUse(dir, { file_path: `${gemDir('geneva_drive', '0.7.0')}/lib/geneva_drive/executor.rb` }, { session, data });
+  assert.equal(call('s1').permissionDecision, 'deny');
+  assert.equal(call('s1'), null);
+  assert.equal(call('s2').permissionDecision, 'deny');
+  assert.equal(toolUse(dir, { command: 'bundle show kamal' }, { tool: 'Bash', session: 's1', data }).permissionDecision, 'deny');
+});
+
+test('matches a gem directory with no trailing slash, as `cd <gem dir> && ...` leaves', () => {
+  const dir = project('Gemfile.lock');
+  const command = `cd ${gemDir('geneva_drive', '0.7.0')} && sed -n '300,400p' lib/geneva_drive/executor.rb`;
+  assert.equal(toolUse(dir, { command }, { tool: 'Bash' }).permissionDecision, 'deny');
+});
+
+test('takes the gem from the last /gems/ segment, not the ruby version directory', () => {
+  const dir = project('Gemfile.lock');
+  const out = toolUse(dir, { pattern: 'def perform', path: gemDir('kamal', '2.12.0') }, { tool: 'Grep' });
+  assert.match(out.permissionDecisionReason, /gem:kamal 2\.12\.0/);
+});
+
+for (const [name, tool, tool_input] of [
+  ['bundle show', 'Bash', { command: 'bundle show kamal' }],
+  ['gem contents', 'Bash', { command: 'gem contents kamal | head -30' }],
+  ['gem unpack', 'Bash', { command: 'gem unpack kamal --target /tmp' }],
+  ['gem which', 'Bash', { command: 'gem which kamal' }],
+  ['bundle open', 'Bash', { command: 'bundle open kamal' }],
+  ['a .gem download', 'Bash', { command: 'curl -sSLo k.gem https://rubygems.org/downloads/kamal-2.12.0.gem' }],
+  ['rubydoc.info', 'WebFetch', { url: 'https://rubydoc.info/gems/kamal/Kamal' }],
+  ['vendor/bundle source', 'Read', { file_path: '/app/vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib/kamal.rb' }],
+  ['relative vendored source', 'Grep', { path: 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib', pattern: 'registry' }],
+  ['a source glob', 'Glob', { pattern: '**/gems/kamal-2.12.0/lib/**/*.rb' }],
+  ['a raw GitHub URL', 'WebFetch', { url: 'https://raw.githubusercontent.com/basecamp/kamal/v2.12.0/README.md' }],
+]) {
+  test(`intercepts ${name}`, () => {
+    assert.match(toolUse(project('Gemfile.lock'), tool_input, { tool }).permissionDecisionReason, /gem:kamal/);
+  });
+}
+
+test('maps the Rails documentation sites onto gem:rails', () => {
+  const out = toolUse(project('Gemfile.lock'), { url: 'https://guides.rubyonrails.org/active_record_querying.html' }, { tool: 'WebFetch' });
+  assert.match(out.permissionDecisionReason, /gem:rails/);
+});
+
+test('intercepts gem source on GitHub only when the repository is a locked gem', () => {
+  const dir = project('Gemfile.lock');
+  const url = (repo) => ({ url: `https://github.com/${repo}/blob/v1.19.7/lib/nokogiri/xml/searchable.rb` });
+  assert.match(toolUse(dir, url('sparklemotion/nokogiri'), { tool: 'WebFetch' }).permissionDecisionReason, /gem:nokogiri/);
+  assert.equal(toolUse(dir, url('skatkov/posh-mcp'), { tool: 'WebFetch' }), null);
+  assert.equal(toolUse(dir, { command: 'gh api repos/skatkov/posh-mcp/contents --jq .[].name' }, { tool: 'Bash' }), null);
+});
+
+for (const [name, tool, tool_input] of [
+  ['a gem with no local docset', 'Bash', { command: `ls ${gemDir('geneva_drive_admin', '0.6.0')}/lib` }],
+  ['a gem that is not in this project', 'Read', { file_path: `${gemDir('sinatra', '4.1.1')}/lib/sinatra.rb` }],
+  ['application code', 'Read', { file_path: '/home/x/app/models/library.rb' }],
+  ['an ordinary command', 'Bash', { command: 'bin/rails test test/models/library_test.rb' }],
+  ['a source path in a Bash description', 'Bash', { command: 'pwd', description: `Looking for ${gemDir('kamal', '2.12.0')}` }],
+  ['a source path in a search pattern', 'Grep', { pattern: gemDir('kamal', '2.12.0'), path: 'app' }],
+  ['a URL in a WebFetch prompt', 'WebFetch', { url: 'https://example.com', prompt: 'Compare with https://guides.rubyonrails.org/' }],
+  ['a GitHub pull request', 'WebFetch', { url: 'https://github.com/basecamp/kamal/pull/100' }],
+  ['an installation command', 'Bash', { command: 'gem install kamal --install-dir /app/vendor/bundle' }],
+  ['a node_modules path', 'Read', { file_path: '/home/x/node_modules/foo-1.2.0/index.js' }],
+]) {
+  test(`allows ${name}`, () => {
+    assert.equal(toolUse(project('Gemfile.lock'), tool_input, { tool }), null);
+  });
+}
+
+// An unlicensed, unsynced or uninstalled POSH must not take gem work with it.
+for (const [name, posh] of [
+  ['exits non-zero', '#!/bin/sh\nexit 1\n'],
+  ['prints nothing', '#!/bin/sh\n'],
+]) {
+  test(`fails open when posh ${name}`, () => {
+    const broken = fs.mkdtempSync(path.join(tmp, 'broken-'));
+    fs.writeFileSync(path.join(broken, 'posh'), posh, { mode: 0o755 });
+    const read = { file_path: `${gemDir('activerecord', '8.1.4.1')}/lib/active_record.rb` };
+    assert.equal(toolUse(project('Gemfile.lock'), read, { env: { PATH: `${broken}:${process.env.PATH}` } }), null);
+  });
+}
+
+test('stays out of the way outside Ruby projects and when POSH is off', () => {
+  const read = { file_path: `${gemDir('activerecord', '8.1.4.1')}/lib/active_record.rb` };
+  assert.equal(toolUse(project('package.json'), read), null);
+  runHook('UserPromptSubmit', project('Gemfile'), prompt('/posh off'));
+  assert.equal(toolUse(project('Gemfile.lock'), read), null);
+});
+
+test('POSH_HOOK_DECISION downgrades the block to a prompt', () => {
+  const out = toolUse(project('Gemfile.lock'), { file_path: `${gemDir('activerecord', '8.1.4.1')}/lib/active_record.rb` }, { env: { POSH_HOOK_DECISION: 'ask' } });
+  assert.equal(out.permissionDecision, 'ask');
+});
+
+test('POSH_HOOK_DECISION cannot grant a tool permission', () => {
+  const out = toolUse(project('Gemfile.lock'), { command: 'bundle show kamal' }, { tool: 'Bash', env: { POSH_HOOK_DECISION: 'allow' } });
+  assert.equal(out.permissionDecision, 'deny');
+});
+
+test('fails open when either runtime executable is absent, without falling back to real POSH', () => {
+  const ruby = execFileSync('/bin/sh', ['-c', 'command -v ruby'], { encoding: 'utf8' }).trim();
+  for (const missing of ['ruby', 'posh']) {
+    const bin = fs.mkdtempSync(path.join(tmp, 'isolated-path-'));
+    for (const name of ['sh', 'cat']) fs.symlinkSync(`/bin/${name}`, path.join(bin, name));
+    fs.symlinkSync('/usr/bin/dirname', path.join(bin, 'dirname'));
+    if (missing !== 'ruby') fs.symlinkSync(ruby, path.join(bin, 'ruby'));
+    if (missing !== 'posh') fs.symlinkSync(path.join(poshBin, 'posh'), path.join(bin, 'posh'));
+    assert.equal(toolUse(project('Gemfile.lock'), { command: 'bundle show kamal' }, { tool: 'Bash', env: { PATH: bin } }), null);
+  }
+});
+
+test('redirects a search of the whole gem tree, where no single gem is named', () => {
+  const dir = project('Gemfile.lock');
+  const out = toolUse(dir, { pattern: 'def update_all', path: `${dir}/vendor/bundle` }, { tool: 'Grep' });
+  assert.equal(out.permissionDecision, 'deny');
+  assert.match(out.permissionDecisionReason, /the installed source of the gems this project locks/);
+  assert.match(out.permissionDecisionReason, /posh search '<symbol>'/);
+});
+
+test('leaves a bundler path that is not being read alone', () => {
+  const dir = project('Gemfile.lock');
+  assert.equal(toolUse(dir, { command: 'bundle config set --local path vendor/bundle' }, { tool: 'Bash' }), null);
+});
+
+test('interception is registered for Claude Code only', () => {
+  const load = (file) => JSON.parse(fs.readFileSync(path.join(repo, file), 'utf8'));
+  const claude = load('.claude-plugin/plugin.json');
+  const codex = load('.codex-plugin/plugin.json');
+  assert.ok(claude.hooks.some((file) => load(file).hooks.PreToolUse));
+  assert.equal(load(codex.hooks).hooks.PreToolUse, undefined);
+});
+
+test('uses the current directory, not the project where the session started', () => {
+  const current = project('Gemfile.lock');
+  const out = toolUse(current, { command: 'bundle show kamal' }, { tool: 'Bash', env: { CLAUDE_PROJECT_DIR: project('package.json') } });
+  assert.equal(out.permissionDecision, 'deny');
+});
+
+test('a project path mentioning gems is not itself a source read', () => {
+  const dir = project('Gemfile.lock');
+  const cwd = path.join(dir, 'gems/kamal-2.12.0');
+  fs.mkdirSync(cwd, { recursive: true });
+  assert.equal(toolUse(cwd, { command: 'pwd' }, { tool: 'Bash' }), null);
+});
+
+for (const response of [
+  'not json', 'null', '[]', '{"ok":false,"data":[{"ref":"gem:kamal","kinds":["rdoc"]}]}',
+]) {
+  test(`fails open on an invalid docsets response: ${response}`, () => {
+    assert.equal(toolUse(project('Gemfile.lock'), { command: 'bundle show kamal' }, {
+      tool: 'Bash', env: { FAKE_POSH_RESPONSE: response },
+    }), null);
+  });
+}
+
+test('accepts formatted JSON but rejects the wrong library, project, and Ruby-only docs', () => {
+  const dir = project('Gemfile.lock');
+  const call = (data, project_path = dir, tool_input = { command: 'bundle show kamal' }) =>
+    toolUse(dir, tool_input, { tool: 'Bash', env: { FAKE_POSH_RESPONSE: JSON.stringify({ ok: true, project_path, data }, null, 2) } });
+  assert.equal(call([{ ref: 'gem:kamal', version: '2.12.0', kinds: ['rdoc'] }]).permissionDecision, 'deny');
+  assert.equal(call([{ ref: 'gem:kamal-extra', kinds: ['rdoc'] }]), null);
+  assert.equal(call([{ ref: 'gem:kamal', kinds: ['rdoc'] }], project()), null);
+  assert.equal(call([{ ref: 'lang:ruby', kinds: ['rdoc'] }], dir, { command: 'grep registry /app/vendor/bundle' }), null);
+});
+
+test('fails open on missing/unsafe sessions, malformed payloads, and unsavable markers', () => {
+  const dir = project('Gemfile.lock');
+  for (const session of ['', '../../outside', 'quote"']) {
+    assert.equal(toolUse(dir, { command: 'bundle show kamal' }, { tool: 'Bash', session }), null);
+  }
+  for (const payload of ['not json', 'null', '{}', '{"tool_input":null}']) {
+    assert.equal(runHook('PreToolUse', dir, payload), null);
+  }
+  const data = path.join(tmp, 'not-a-directory');
+  fs.writeFileSync(data, '');
+  for (let i = 0; i < 2; i++) {
+    assert.equal(toolUse(dir, { command: 'bundle show kamal' }, { tool: 'Bash', data }), null);
+  }
+});
+
+test('parallel source reads get exactly one redirect', async () => {
+  const dir = project('Gemfile.lock');
+  const data = fs.mkdtempSync(path.join(tmp, 'parallel-'));
+  const input = JSON.stringify({ session_id: 'parallel', cwd: dir, tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } });
+  const outputs = await Promise.all(Array.from({ length: 6 }, async () => {
+    const child = execFile('sh', [hook, 'PreToolUse'], {
+      cwd: dir,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: dir, CLAUDE_PLUGIN_DATA: data, PATH: `${poshBin}:${process.env.PATH}`, FAKE_POSH_PROJECT_JSON: JSON.stringify(dir) },
+    });
+    const result = new Promise((resolve, reject) => {
+      let stdout = '';
+      child.stdout.on('data', (chunk) => { stdout += chunk; });
+      child.on('error', reject);
+      child.on('close', (code) => code === 0 ? resolve(stdout) : reject(new Error(`hook exited ${code}`)));
+    });
+    child.stdin.end(input);
+    return result;
+  }));
+  assert.equal(outputs.filter(Boolean).length, 1);
+  assert.equal(JSON.parse(outputs.find(Boolean)).hookSpecificOutput.permissionDecision, 'deny');
 });
