@@ -21,4 +21,4 @@ A small Rails application that presses widgets and reportts on them.
 MD
 
 # Keep the denial path operational while requiring zero model-issued POSH calls.
-sh "$(dirname -- "$0")/../prepare-posh.sh" gem:activerecord 8.1.4.1
+sh "$(dirname -- "$0")/../prepare-posh.sh" gem:activerecord 8.1.4.1 typo-control

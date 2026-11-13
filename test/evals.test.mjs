@@ -69,6 +69,16 @@ test('scaffold preflight fails on missing or wrong-version docs', () => {
   }));
 });
 
+test('scaffold preflight requires the expected read kind, not just any local docset', () => {
+  for (const [name, ref, version, wrongKind] of [
+    ['kamal-guide', 'gem:kamal', '2.12.0', 'rdoc'],
+    ['activerecord-api', 'gem:activerecord', '8.1.4.1', 'guide'],
+  ]) {
+    assert.throws(() => scaffold(name, { docs: [{ ref, version, kinds: [wrongKind] }] }));
+    scaffold(name, { docs: [{ ref, version, kinds: ['rdoc', 'guide'] }] });
+  }
+});
+
 test('typo control has a working denial path but reading its README is allowed', () => {
   const { cwd, env } = scaffold('typo-control');
   const hook = (tool_input) => execFileSync('sh', [path.join(repo, 'hooks/posh-hook.sh'), 'PreToolUse'], {
