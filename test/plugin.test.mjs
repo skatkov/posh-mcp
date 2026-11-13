@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, before, beforeEach, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { Error as ToolError } from '@opencode/plugin/promise/tool';
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hook = path.join(repo, 'hooks/posh-hook.sh');
@@ -86,16 +87,21 @@ before(async () => {
 beforeEach(() => fs.rmSync(modeFile, { force: true }));
 
 async function setupOpenCode(directory, servers = {}) {
-  const state = { hooks: {}, sent: [] };
+  const state = { hooks: {}, sent: [], directory };
   const editor = { get: (n) => servers[n], set: (n, c) => { servers[n] = c; } };
   await plugin.setup({
     location: { directory },
     mcp: { transform: (fn) => fn(editor) },
     command: { transform: (fn) => fn({ add: (c) => { state.command = c; } }) },
     session: {
+      get: async () => {
+        if (state.sessionError) throw new Error('session unavailable');
+        return { location: { directory: state.directory } };
+      },
       hook: (name, fn) => { state.hooks[name] = fn; },
       prompt: (input) => { state.sent.push(input); },
     },
+    tool: { hook: (name, fn) => { state.hooks[name] = fn; } },
   });
   state.system = (kind = 'context') => {
     const event = { system: [] };
@@ -105,6 +111,29 @@ async function setupOpenCode(directory, servers = {}) {
   state.run = (text) => state.command.execute({ sessionID: 's', prompt: { text }, delivery: 'steer' });
   state.servers = servers;
   return state;
+}
+
+async function openCodeTool(host, cwd, tool, input, { session = 's', data, env = {} } = {}) {
+  const overrides = {
+    PATH: `${poshBin}:${process.env.PATH}`,
+    PLUGIN_DATA: data ?? fs.mkdtempSync(path.join(tmp, 'opencode-data-')),
+    FAKE_POSH_PROJECT_JSON: JSON.stringify(cwd),
+    ...env,
+  };
+  const previous = Object.fromEntries(Object.keys(overrides).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, overrides);
+  try {
+    await host.hooks['execute.before']({ tool, input, sessionID: session, messageID: 'm', id: 'call', agent: 'build' });
+    return null;
+  } catch (error) {
+    assert.ok(error instanceof ToolError, `expected a host Tool.Error, got ${error}`);
+    return error.message;
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 test('injects valid JSON with the ruleset and no frontmatter in a Ruby project', () => {
@@ -475,6 +504,87 @@ test('Codex manifest command denies canonical Bash calls, never emits unsupporte
   assert.match(out.permissionDecisionReason, /gem:kamal/);
   assert.equal(call('bundle show kamal'), '');
   assert.equal(fs.readdirSync(path.join(env.PLUGIN_DATA, 'nudged')).length, 1);
+});
+
+test('OpenCode maps all five built-in lookup tools to the shared policy', async () => {
+  const cwd = project('Gemfile.lock');
+  const host = await setupOpenCode(cwd);
+  for (const [tool, input] of [
+    ['read', { path: `${gemDir('kamal', '2.12.0')}/lib/kamal.rb` }],
+    ['grep', { path: 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib', pattern: 'registry' }],
+    ['glob', { pattern: '**/vendor/bundle/**/gems/kamal-2.12.0/lib/**/*.rb' }],
+    ['shell', { command: 'bundle show kamal' }],
+    ['webfetch', { url: 'https://rubydoc.info/gems/kamal/Kamal' }],
+  ]) {
+    const reason = await openCodeTool(host, cwd, tool, input);
+    assert.match(reason, /gem:kamal 2\.12\.0/);
+    assert.ok(reason.includes(`"project":${JSON.stringify(cwd)}`));
+  }
+});
+
+test('OpenCode leaves ordinary tools, metadata and malformed inputs alone', async () => {
+  const cwd = project('Gemfile.lock');
+  const host = await setupOpenCode(cwd);
+  for (const [tool, input] of [
+    ['read', { path: 'app/models/kamal.rb' }],
+    ['grep', { pattern: gemDir('kamal', '2.12.0'), path: 'app' }],
+    ['shell', { command: 'echo bundle show kamal' }],
+    ['webfetch', { url: 'https://example.com', prompt: 'https://rubygems.org/gems/kamal' }],
+    ['read', { filePath: `${gemDir('kamal', '2.12.0')}/lib/kamal.rb` }],
+    ['posh_read', { ref: 'gem:kamal' }],
+    ['read', null], ['shell', 'bundle show kamal'], ['read', {}],
+  ]) assert.equal(await openCodeTool(host, cwd, tool, input), null);
+});
+
+test('OpenCode retries proceed and new sessions get their own redirect', async () => {
+  const cwd = project('Gemfile.lock');
+  const host = await setupOpenCode(cwd);
+  const data = fs.mkdtempSync(path.join(tmp, 'opencode-data-'));
+  const call = (session) => openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }, { data, session });
+  assert.match(await call('s1'), /gem:kamal/);
+  assert.equal(await call('s1'), null);
+  assert.match(await call('s2'), /gem:kamal/);
+});
+
+test('OpenCode uses the moved session location and a shell workdir, not its plugin location', async () => {
+  const original = project('package.json', '.git');
+  const cwd = project('Gemfile.lock', '.git');
+  const nested = path.join(cwd, 'app/models');
+  fs.mkdirSync(nested, { recursive: true });
+  const host = await setupOpenCode(original);
+  host.directory = nested;
+  assert.match(await openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }), /gem:kamal/);
+  host.directory = original;
+  assert.match(await openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal', workdir: nested }), /gem:kamal/);
+  assert.equal(await openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }), null);
+});
+
+test('OpenCode fails open for missing runtimes, POSH errors, unavailable sessions and unwritable state', async () => {
+  const cwd = project('Gemfile.lock');
+  const host = await setupOpenCode(cwd);
+  const call = (options) => openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }, options);
+  assert.equal(await call({ env: { PATH: poshBin } }), null);
+  assert.equal(await call({ env: { FAKE_POSH_RESPONSE: 'not json' } }), null);
+  const data = path.join(tmp, 'opencode-state-file');
+  fs.writeFileSync(data, '');
+  assert.equal(await call({ data }), null);
+  host.sessionError = true;
+  assert.equal(await call(), null);
+});
+
+test('OpenCode honors off, project boundaries and exact docset project matching', async () => {
+  const cwd = project('Gemfile.lock');
+  const host = await setupOpenCode(cwd);
+  const call = (env = {}) => openCodeTool(host, cwd, 'shell', { command: 'bundle show kamal' }, { env });
+  assert.equal(await call({ FAKE_POSH_PROJECT_JSON: JSON.stringify(project('Gemfile.lock')) }), null);
+  runHook('UserPromptSubmit', cwd, prompt('/posh off'));
+  assert.equal(await call(), null);
+  fs.rmSync(modeFile);
+  const inner = path.join(cwd, 'non-ruby-repo');
+  fs.mkdirSync(inner);
+  fs.writeFileSync(path.join(inner, '.git'), '');
+  host.directory = inner;
+  assert.equal(await call(), null);
 });
 
 test('uses the current directory, not the project where the session started', () => {
