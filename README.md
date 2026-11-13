@@ -139,18 +139,20 @@ Gems with no local docs, git-sourced gems, non-Ruby projects in auto mode,
 and `/posh off` are left alone. A broad search of the gem tree gets one
 separate nudge when any locked gem has local docs.
 
-All three harnesses run the same policy in [`hooks/posh-lookup.rb`](hooks/posh-lookup.rb).
+All three harnesses run the same JavaScript policy in [`shared/lookup-policy.mjs`](shared/lookup-policy.mjs).
 It owns lookup classification, mode and project checks, POSH discovery, redirect
 text, and atomic retry markers. The adapters only translate their host contracts:
 
-- Claude Code and Codex use [`hooks/posh-pre-tool-use.rb`](hooks/posh-pre-tool-use.rb)
-  to turn the shared reason into a `PreToolUse` response.
+- Claude Code and Codex use [`hooks/posh-pre-tool-use.mjs`](hooks/posh-pre-tool-use.mjs)
+  to turn the shared reason into a `PreToolUse` response. Their shell launcher
+  invokes Node only for lookup interception.
 - [`opencode/posh.mjs`](opencode/posh.mjs) maps OpenCode's built-in tool inputs,
   resolves the session's current location (or a shell's explicit `workdir`),
-  and turns that same reason into the host SDK's `Tool.Error`.
+  imports the policy directly, and turns its reason into the host SDK's `Tool.Error`.
 
-The policy uses Ruby's standard library, with no third-party gems.
-Missing Ruby, missing or failing POSH, malformed responses, and unwritable
+The policy uses Node's standard library, with no runtime parsing dependencies or
+Ruby subprocesses. Claude/Codex interception requires Node on the hook's PATH.
+Missing Node, missing or failing POSH, malformed responses, and unwritable
 session state all leave normal tool permissions unchanged. A retry of the
 same lookup goes through: this is an adoption nudge, not a security boundary
 or a ban on implementation-level source inspection. GitHub matching uses
@@ -158,8 +160,10 @@ repository names as gem-name hints; it does not cover every repository or
 arbitrary shell program.
 Shell detection recognizes literal-leading commands (optionally `bundle exec`),
 not executable-looking words printed as arguments; compound-command tails are skipped.
-Filesystem detection is limited to Bundler/RubyGems installation layouts and the
-current Ruby's gem homes; a first-party directory merely named `gems` is left alone.
+Filesystem detection recognizes Bundler/RubyGems installation layouts and custom
+gem homes exported through `GEM_HOME` or `GEM_PATH`; a first-party directory merely
+named `gems` is left alone. It does not run `Gem.path`, so arbitrary unexported
+RubyGems path overrides are not detected.
 Web lookups use the actual URL host and path, not embedded links in a query or fragment.
 
 Claude Code alone supports `POSH_HOOK_DECISION=ask` to request approval instead
@@ -170,7 +174,8 @@ do not pass through local tool hooks and are not intercepted.
 
 OpenCode requires the 2.3+ plugin SDK; it supplies the runtime SDK, while the
 repository pins a development copy for adapter tests. Claude and Codex hooks
-do not require Node or the OpenCode SDK.
+need Node but not the OpenCode SDK. Lifecycle guidance and mode commands still
+work without Node; only lookup interception is skipped when it is unavailable.
 
 Session markers are scoped by project and gem, and live in the plugin's data
 directory (or `$XDG_CACHE_HOME/posh/nudged`, defaulting to
