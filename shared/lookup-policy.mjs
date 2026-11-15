@@ -127,9 +127,11 @@ function commandOperands(tool, args) {
   const spec = commandOptions[tool];
   if (!spec) return [];
   // shortcut: unknown options fail open; add observed forms rather than guessing operand roles.
+  // parseArgs rejects a present short key, so a long name must omit it entirely.
+  const option = (type) => (name) => [name, name.length === 1 ? { type, short: name } : { type }];
   const options = Object.fromEntries([
-    ...spec.flags.split(' ').filter(Boolean).map((name) => [name, { type: 'boolean', short: name.length === 1 ? name : undefined }]),
-    ...spec.values.split(' ').filter(Boolean).map((name) => [name, { type: 'string', short: name.length === 1 ? name : undefined }]),
+    ...spec.flags.split(' ').filter(Boolean).map(option('boolean')),
+    ...spec.values.split(' ').filter(Boolean).map(option('string')),
   ]);
   const { positionals, values } = parseArgs({ args, options, allowPositionals: true });
   const operands = ['grep', 'rg', 'sed', 'awk'].includes(tool) &&
