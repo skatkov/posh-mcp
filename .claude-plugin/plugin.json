@@ -9,7 +9,7 @@
   },
   "homepage": "https://poshtui.com",
   "repository": "https://github.com/skatkov/posh-mcp",
-  "license": "LicenseRef-POSH-Proprietary",
+  "license": "MIT",
   "keywords": ["ruby", "rails", "documentation", "mcp"],
   "hooks": "./hooks/claude-codex-hooks.json"
 }

@@ -8,7 +8,8 @@ Documentation lookups use local files and an index after syncing. The `sync`
 tool uses the network to download docs and update that index.
 
 **This repository contains public installation metadata and integration manifests,
-not the POSH application source. POSH is proprietary software.** Its terminal
+not the POSH application source. The contents of this repository are MIT licensed;
+POSH itself is proprietary software.** Its terminal
 documentation browser and basic sync are free; MCP and agent CLI tools require a
 POSH license. Current plans and trial details are at [poshtui.com](https://poshtui.com/#pricing).
 
@@ -182,9 +183,14 @@ MCP calls are offline or read-only.
 
 ## License and support
 
-Copyright © 2026 KROONI B.V. All rights reserved. See [LICENSE](LICENSE) and
-[Terms of Service](https://poshtui.com/terms-of-service). This repository does not
-grant additional rights to POSH or its binaries.
+This repository's integration code and documentation are MIT licensed; see
+[LICENSE](LICENSE). POSH itself is proprietary software: see
+[LICENSE-POSH](LICENSE-POSH) and the
+[Terms of Service](https://poshtui.com/terms-of-service). The MIT licence covers
+this repository only. It grants no rights to POSH or its binaries, and no rights
+to the POSH name or logo.
+
+Copyright © 2026 KROONI B.V.
 
 - [Homepage](https://poshtui.com)
 - [Installation](https://poshtui.com/docs/installation/)
