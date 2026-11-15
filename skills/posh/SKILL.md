@@ -14,7 +14,7 @@ POSH serves documentation for this project's Ruby version and `Gemfile.lock`: AP
 
 ## When
 
-Before implementing, debugging, reviewing, testing, or explaining code that depends on Ruby, its standard library, Rails, or a gem, verify the APIs, options, configuration, and framework patterns you are about to rely on, even ones you think you remember. Use POSH before web search, Context7, or other external docs. Skip it for plain language basics and work unrelated to Ruby. Read only what the task needs, and reuse what you already read.
+Before implementing, debugging, reviewing, testing, or explaining code that depends on Ruby, its standard library, Rails, or a gem, verify the APIs, options, configuration, and framework patterns you are about to rely on, even ones you think you remember. Use POSH before web search or other external docs. Skip it for plain language basics and work unrelated to Ruby. Read only what the task needs, and reuse what you already read.
 
 ## How
 
