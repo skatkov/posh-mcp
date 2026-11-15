@@ -67,6 +67,24 @@ test('injects valid JSON with the ruleset and no frontmatter in a Ruby project',
   assert.ok(!out.additionalContext.includes('argument-hint'));
 });
 
+test('warns once when the posh command is missing, and stays quiet when it is there', () => {
+  const dir = project('Gemfile.lock');
+  const real = process.env.PATH;
+  // A stub keeps the quiet case independent of whether this machine has POSH installed.
+  const bin = fs.mkdtempSync(path.join(tmp, 'bin-'));
+  fs.writeFileSync(path.join(bin, 'posh'), '#!/bin/sh\n', { mode: 0o755 });
+  try {
+    process.env.PATH = '/usr/bin:/bin';
+    const missing = runHook('SessionStart', dir).additionalContext;
+    assert.match(missing, /posh command is not on PATH/);
+    assert.ok(missing.includes(MARKER));
+    process.env.PATH = `${bin}:/usr/bin:/bin`;
+    assert.doesNotMatch(runHook('SessionStart', dir).additionalContext, /not on PATH/);
+  } finally {
+    process.env.PATH = real;
+  }
+});
+
 test('subagents get the ruleset too', () => {
   assert.equal(runHook('SubagentStart', project('Gemfile')).hookEventName, 'SubagentStart');
 });

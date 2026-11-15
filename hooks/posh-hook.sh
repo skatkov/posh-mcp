@@ -39,6 +39,10 @@ active() {
 
 ruleset() {
   awk 'n >= 2; /^---[[:space:]]*$/ && n < 2 { n++ }' "$root/skills/posh/SKILL.md"
+  # A GUI or service launch often drops the brew and ~/.local/bin entries, so POSH
+  # can be installed and still be invisible here. Say so instead of failing silently.
+  command -v posh >/dev/null 2>&1 ||
+    printf '\nThe posh command is not on PATH in this session, so no local documentation is reachable. Tell the user once, in one line, and do not call POSH tools or posh commands.\n'
   if [ "$(mode)" = feedback ]; then
     printf '\n'
     cat "$root/skills/posh/feedback.md"
