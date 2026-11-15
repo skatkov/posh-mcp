@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.skatkov/posh",
   "title": "POSH \u2014 Ruby documentation",
-  "description": "Search and read local Ruby and gem documentation matched to your project's versions.",
+  "description": "Version-matched Ruby and gem API docs for AI coding agents: focused reads to save tokens, prompt-injection scanning to reduce risk, and API grounding for better code with fewer correction loops.",
   "version": "0.39.0",
   "websiteUrl": "https://poshtui.com",
   "icons": [

@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "skatkov",
-  "description": "Documentation for your project's exact Ruby and gem versions.",
+  "description": "Version-matched Ruby and gem API documentation for AI coding agents.",
   "owner": {
     "name": "KROONI B.V.",
     "url": "https://poshtui.com"
@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "posh",
-      "description": "Makes Claude check POSH documentation for the project's exact Ruby and gem versions.",
+      "description": "Gives Claude version-matched Ruby and gem API documentation and prompts it to check it before relying on memory.",
       "source": "./",
       "category": "development"
     }
