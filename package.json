@@ -2,7 +2,7 @@
   "name": "posh-agent-plugin",
   "version": "1.1.1",
   "private": true,
-  "description": "Makes coding agents check POSH documentation for the project's exact Ruby and gem versions.",
+  "description": "Gives AI coding agents version-matched Ruby and gem API documentation and prompts them to check it before relying on memory.",
   "license": "SEE LICENSE IN LICENSE",
   "homepage": "https://poshtui.com",
   "repository": {

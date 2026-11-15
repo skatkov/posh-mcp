@@ -1,7 +1,7 @@
 {
   "name": "posh",
   "version": "1.1.1",
-  "description": "Makes Codex check POSH documentation for the project's exact Ruby and gem versions. Requires POSH to be installed and activated.",
+  "description": "Gives Codex version-matched Ruby and gem API documentation and prompts it to check it before relying on memory. Requires POSH to be installed and activated.",
   "author": {
     "name": "KROONI B.V.",
     "email": "contact@poshtui.com",
@@ -16,8 +16,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "POSH",
-    "shortDescription": "Docs for your exact Ruby and gem versions",
-    "longDescription": "Search and read local Ruby, Rails, and gem documentation matched to the project's Ruby version and Gemfile.lock, and check it before relying on memory.",
+    "shortDescription": "Version-matched Ruby API docs for AI coding",
+    "longDescription": "Give Codex Ruby, Rails, and gem API documentation matched to the project's Ruby version and Gemfile.lock. Read focused sections to save tokens, reduce risk with prompt-injection scanning, and ground code in matching APIs to help avoid version-mismatch correction loops. Documentation lookups run locally after syncing. Scanning does not eliminate risk; retrieved docs remain untrusted data. Prompts Codex to check documentation before relying on memory.",
     "developerName": "KROONI B.V.",
     "category": "Coding",
     "capabilities": ["Read", "Lifecycle hooks"],

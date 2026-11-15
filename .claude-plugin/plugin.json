@@ -1,7 +1,7 @@
 {
   "name": "posh",
   "version": "1.1.1",
-  "description": "Search and read local Ruby and gem documentation matched to your project's versions, and check it before relying on memory. Requires POSH to be installed and activated.",
+  "description": "Gives Claude version-matched Ruby and gem API documentation and prompts it to check it before relying on memory. Requires POSH to be installed and activated.",
   "author": {
     "name": "KROONI B.V.",
     "email": "contact@poshtui.com",

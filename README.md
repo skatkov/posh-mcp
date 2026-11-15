@@ -1,6 +1,6 @@
 # POSH MCP server
 
-Search and read local Ruby and gem documentation matched to your project's versions.
+Version-matched documentation for AI coding agents. Built for Ruby.
 
 POSH gives coding agents documentation selected from your Ruby version and
 `Gemfile.lock`: API references, READMEs, changelogs, and guides where available.
@@ -11,6 +11,21 @@ tool uses the network to download docs and update that index.
 not the POSH application source. POSH is proprietary software.** Its terminal
 documentation browser and basic sync are free; MCP and agent CLI tools require a
 POSH license. Current plans and trial details are at [poshtui.com](https://poshtui.com/#pricing).
+
+## Why use POSH?
+
+- **Save tokens.** Search for the API, inspect its outline, and read only the
+  relevant section as Markdown instead of sending an entire documentation page
+  to the model. Keep unrelated content out of the context window.
+- **Reduce prompt-injection risk.** POSH's
+  [security process](https://poshtui.com/docs/security/) includes model-based
+  scanning for malicious instructions in documentation. Scanning helps reduce
+  risk but cannot eliminate it: agents must still treat retrieved docs as
+  untrusted data, not instructions.
+- **Better output, fewer correction loops.** Ground generated code in API
+  signatures and examples matched to your Ruby version and `Gemfile.lock`.
+  Checking the right docs before coding helps avoid invented methods, outdated
+  syntax, and retries caused by version mismatches.
 
 ## Install and activate
 
