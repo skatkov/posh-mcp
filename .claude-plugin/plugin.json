@@ -1,6 +1,6 @@
 {
   "name": "posh",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Gives Claude version-matched Ruby and gem API documentation and prompts it to check it before relying on memory. Requires POSH to be installed and activated.",
   "author": {
     "name": "KROONI B.V.",
