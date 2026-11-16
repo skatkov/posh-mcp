@@ -1,11 +1,5 @@
 # POSH plugins + mcp server
-
-Version-matched documentation for AI coding agents.
-
-POSH gives coding agents documentation selected from your Ruby version and
-`Gemfile.lock`: API references, READMEs, changelogs, and guides where available.
-Documentation lookups use local files and an index after syncing. The `sync`
-tool uses the network to download docs and update that index.
+Version-matched, secure and optimized documentation for AI coding agents.
 
 ## Why use POSH?
 
@@ -23,7 +17,9 @@ tool uses the network to download docs and update that index.
   syntax, and retries caused by version mismatches.
 
 ## Install POSH
-poshtui.com application is a hard dependency in this project. 
+poshtui.com application is a hard dependency in this project.
+
+Posh runs a sync engine that manages documentation locally and servers it through CLI/MCP interface.
 
 ```sh
 curl -fsSL https://poshtui.com/install.sh | sh
