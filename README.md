@@ -164,7 +164,9 @@ text, and atomic retry markers. The adapters only translate their host contracts
   imports the policy directly, and turns its reason into the host SDK's `Tool.Error`.
 - [`hooks/posh-copilot-hook.mjs`](hooks/posh-copilot-hook.mjs) maps Copilot's native
   tool inputs and hook responses, uses the payload's current working directory,
-  and delegates lifecycle guidance and mode changes to the existing shell hook.
+  and shares lifecycle guidance and mode changes with OpenCode through
+  [`shared/agent-lifecycle.mjs`](shared/agent-lifecycle.mjs). The shell launcher
+  only preserves fail-open process behavior; lifecycle responses are serialized once.
   Its guidance pins calls to the resolved Ruby project because Copilot starts
   plugin MCP servers in the plugin directory by default.
   It emits a native denial for redirects. Its shell launcher exits successfully
