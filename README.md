@@ -251,7 +251,8 @@ npm run test:mutation
 ```
 
 StrykerJS mutates `shared/lookup-policy.mjs` and runs `test/plugin.test.mjs`
-against each mutant, including the Claude/Codex subprocess adapters and the
+and `test/lookup-policy.test.mjs` against each mutant. These cover direct parsing
+and classification results, the Claude/Codex subprocess adapters, and the
 OpenCode adapter. It uses the existing Node test runner; no test-framework
 migration is needed. It works in disposable copies, not the original source.
 The HTML report is `reports/mutation/index.html`; the machine-readable report is
