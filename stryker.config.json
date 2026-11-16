@@ -7,6 +7,7 @@
   },
   "coverageAnalysis": "off",
   "concurrency": 4,
+  "timeoutMS": 30000,
   "reporters": ["clear-text", "progress", "html", "json"],
   "htmlReporter": {
     "fileName": "reports/mutation/index.html"
