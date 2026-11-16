@@ -74,10 +74,13 @@ test('Copilot mode commands share state and preserve the transformed prompt', ()
   assert.equal(runCopilot('sessionStart', other), null);
 });
 
-test('Copilot leaves ordinary prompts untouched and does not evaluate command arguments', () => {
+test('Copilot scopes ordinary prompts without changing mode or evaluating command arguments', () => {
   const cwd = project('Gemfile');
   for (const prompt of ['fix the app', 'please /posh off', '/posh how does has_many work', '/posh $(touch pwned)']) {
-    assert.equal(runCopilot('userPromptTransformed', cwd, { prompt, transformedPrompt: prompt }), null);
+    const text = runCopilot('userPromptTransformed', cwd, { prompt, transformedPrompt: prompt }).modifiedTransformedPrompt;
+    assert.ok(text.includes(JSON.stringify({ project: cwd })));
+    assert.ok(text.endsWith(`\n\n${prompt}`));
+    assert.ok(!text.includes(MARKER));
     assert.equal(fs.existsSync(modeFile), false);
   }
   assert.equal(fs.existsSync(path.join(cwd, 'pwned')), false);
@@ -197,4 +200,56 @@ test('Copilot rejects unusable lifecycle input before changing shared mode', () 
     }), null);
     assert.equal(fs.existsSync(modeFile), false);
   }
+});
+
+test('Copilot refreshes project guidance on ordinary prompts without a new session start', () => {
+  const original = project('Gemfile', '.git');
+  const moved = project('Gemfile.lock', '.git');
+  const nested = path.join(moved, 'app/models');
+  fs.mkdirSync(nested, { recursive: true });
+  assert.ok(runCopilot('sessionStart', original).additionalContext.includes(JSON.stringify({ project: original })));
+  const transformedPrompt = 'Keep this expanded prompt unchanged.\n"quotes" and \\slashes.';
+  for (const cwd of [moved, nested]) {
+    const text = runCopilot('userPromptTransformed', cwd, { prompt: 'fix this app', transformedPrompt }).modifiedTransformedPrompt;
+    assert.ok(text.includes(JSON.stringify({ project: moved })));
+    assert.ok(!text.includes(original));
+    assert.match(text, /discard all earlier POSH project-path instructions/);
+    assert.ok(text.endsWith(`\n\n${transformedPrompt}`));
+    assert.ok(!text.includes(MARKER), 'ordinary prompts need only the short project directive');
+  }
+  assert.equal(fs.existsSync(modeFile), false);
+});
+
+test('Copilot revokes stale guidance when auto mode leaves Ruby, then reactivates on return', () => {
+  const ruby = project('Gemfile', '.git');
+  const other = path.join(ruby, 'unrelated-repo');
+  fs.mkdirSync(path.join(other, '.git'), { recursive: true });
+  runCopilot('sessionStart', ruby);
+  const input = { prompt: 'continue', transformedPrompt: 'continue' };
+  const inactive = runCopilot('userPromptTransformed', other, input).modifiedTransformedPrompt;
+  assert.match(inactive, /discard all earlier POSH project-path instructions/);
+  assert.match(inactive, /inactive in this non-Ruby directory \(auto mode\)/);
+  assert.match(inactive, /Stop following earlier POSH guidance/);
+  assert.ok(!inactive.includes(JSON.stringify({ project: ruby })));
+  const active = runCopilot('userPromptTransformed', ruby, input).modifiedTransformedPrompt;
+  assert.ok(active.includes(JSON.stringify({ project: ruby })));
+  assert.match(active, /POSH is active for this Ruby project/);
+  assert.equal(fs.existsSync(modeFile), false);
+});
+
+test('Copilot never reuses a previous project in forced-on or off mode', () => {
+  const ruby = project('Gemfile');
+  const other = project('.git');
+  const command = (prompt) => runCopilot('userPromptTransformed', ruby, { prompt, transformedPrompt: prompt });
+  command('/posh on');
+  const input = { prompt: 'continue', transformedPrompt: 'continue' };
+  const unscoped = runCopilot('userPromptTransformed', other, input).modifiedTransformedPrompt;
+  assert.match(unscoped, /POSH is enabled, but no Ruby project was found/);
+  assert.match(unscoped, /Locate the intended Ruby project/);
+  assert.ok(!unscoped.includes(ruby));
+  command('/posh off');
+  const off = runCopilot('userPromptTransformed', ruby, input).modifiedTransformedPrompt;
+  assert.match(off, /POSH is off/);
+  assert.match(off, /discard all earlier POSH project-path instructions/);
+  assert.ok(!off.includes(JSON.stringify({ project: ruby })));
 });
