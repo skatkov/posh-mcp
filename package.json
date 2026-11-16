@@ -1,19 +1,35 @@
 {
-  "name": "posh-agent-plugin",
+  "name": "opencode-posh",
   "version": "1.2.1",
-  "private": true,
-  "description": "Gives AI coding agents version-matched Ruby and gem API documentation and prompts them to check it before relying on memory.",
+  "description": "OpenCode plugin: gives OpenCode version-matched Ruby and gem API documentation and prompts it to check it before relying on memory. Requires POSH to be installed and activated.",
+  "keywords": [
+    "ruby",
+    "rails",
+    "documentation",
+    "mcp",
+    "opencode",
+    "opencode-plugin"
+  ],
   "license": "MIT",
   "homepage": "https://poshtui.com",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/skatkov/posh-mcp.git"
   },
+  "bugs": {
+    "url": "https://github.com/skatkov/posh-mcp/issues"
+  },
   "type": "module",
   "main": "./opencode/posh.mjs",
   "exports": {
     ".": "./opencode/posh.mjs"
   },
+  "files": [
+    "opencode/",
+    "shared/",
+    "skills/",
+    "LICENSE-POSH"
+  ],
   "peerDependencies": {
     "@opencode/plugin": "^2.3.0"
   },
