@@ -237,6 +237,26 @@ Start with `docsets`, search using a returned library ref, and read the returned
 document or section ref. Sync missing docs, then retry. Do not invent refs or
 assume a tool call's project override persists to the next call.
 
+## Releasing
+
+One command bumps every host manifest, writes the changelog entry, tags, and
+pushes. The tag is what publishes: `.github/workflows/publish.yml` runs the
+tests, publishes [`opencode-posh`](https://www.npmjs.com/package/opencode-posh)
+to npm through trusted publishing (OIDC, no token in the repository), and opens
+the GitHub release from the new changelog entry.
+
+```sh
+npm version patch   # or minor, major, or an exact 1.4.0
+```
+
+`preversion` runs the tests, `version` mirrors the new number into the Claude,
+Codex, Cursor, and Gemini manifests and prepends the commits since the last
+release to [CHANGELOG.md](CHANGELOG.md), and `postversion` pushes the commit and
+its tag. There is no separate confirmation step, so run it only when the release
+should go out. npm's first publish of a package cannot use OIDC: publish once
+from a workstation, then configure the trusted publisher on npm with repository
+`skatkov/posh-mcp` and workflow file `publish.yml`.
+
 ## Privacy Policy
 
 See [POSH's privacy policy](https://poshtui.com/privacy-policy). Documentation
