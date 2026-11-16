@@ -8,6 +8,7 @@ const manifests = [
   '.claude-plugin/plugin.json',
   '.codex-plugin/plugin.json',
   '.cursor-plugin/plugin.json',
+  '.github/plugin/plugin.json',
   'gemini-extension.json',
 ];
 const changelog = 'CHANGELOG.md';

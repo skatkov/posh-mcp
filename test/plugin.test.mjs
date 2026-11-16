@@ -4,71 +4,11 @@
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
-import { fileURLToPath } from 'node:url';
+import { beforeAll, test, vi } from 'vitest';
 import { Error as ToolError } from '@opencode/plugin/promise/tool';
 import { poshRedirect } from '../shared/lookup-policy.mjs';
-
-const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const hook = path.join(repo, 'hooks/posh-hook.sh');
-const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'posh-plugin-')));
-afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
-process.env.XDG_CONFIG_HOME = path.join(tmp, 'config');
-const modeFile = path.join(tmp, 'config/posh/agent-mode');
-const MARKER = "POSH: docs for this project's exact versions";
-const FEEDBACK = 'POSH feedback: proactively evaluate successful use too';
-
-const project = (...files) => {
-  const dir = fs.mkdtempSync(path.join(tmp, 'project-'));
-  for (const file of files) fs.writeFileSync(path.join(dir, file), '');
-  return dir;
-};
-
-function runHook(event, cwd, stdin = '', extraEnv = {}) {
-  const { CLAUDE_PROJECT_DIR, ...env } = process.env;
-  const out = execFileSync('sh', [hook, event], { cwd, env: { ...env, ...extraEnv }, input: stdin, encoding: 'utf8' });
-  return out ? JSON.parse(out).hookSpecificOutput : null;
-}
-
-// A fake `posh` keeps the PreToolUse tests off this machine's licence and synced docsets.
-const DOCSETS = {
-  'gem:activerecord': { version: '8.1.4.1', kinds: ['rdoc'] },
-  'gem:kamal': { version: '2.12.0', kinds: ['rdoc', 'guide'] },
-  'gem:nokogiri': { version: '1.19.7', kinds: ['rdoc'] },
-  'gem:rails': { version: '8.1.4.1', kinds: ['rdoc'] },
-  'gem:geneva_drive': { version: '0.7.0', kinds: ['yard'] },
-  'gem:geneva_drive_admin': { version: '0.6.0', kinds: [] },
-};
-const poshBin = path.join(tmp, 'bin');
-beforeAll(() => {
-  fs.mkdirSync(poshBin, { recursive: true });
-  const cases = Object.entries(DOCSETS)
-    .map(([ref, spec]) => `  *'--filter ${ref}') printf '%s' '${JSON.stringify([{ ref, ...spec }])}' ;;`)
-    .join('\n');
-  // Without --filter the real posh lists the whole project, which is how the hook
-  // asks whether this project has any local docs at all.
-  const all = JSON.stringify(Object.entries(DOCSETS).map(([ref, spec]) => ({ ref, ...spec })));
-  fs.writeFileSync(
-    path.join(poshBin, 'posh'),
-    `#!/bin/sh
-[ "$1" = docsets ] && [ "$2" = --json ] && [ "$3" = --project ] || exit 1
-[ "$#" = 4 ] || { [ "$#" = 6 ] && [ "$5" = --filter ]; } || exit 1
-if [ -n "\${FAKE_POSH_CALLS:-}" ]; then printf '%s\\n' "$@" >> "$FAKE_POSH_CALLS"; fi
-if [ -n "\${FAKE_POSH_EXPECT_PROJECT:-}" ]; then [ "$4" = "$FAKE_POSH_EXPECT_PROJECT" ] || exit 1; fi
-if [ -n "\${FAKE_POSH_RESPONSE+x}" ]; then printf '%s' "$FAKE_POSH_RESPONSE"; exit; fi
-printf '%s' '{"ok":true,"project_path":' "$FAKE_POSH_PROJECT_JSON" ',"data":'
-case "$*" in
-${cases}
-  *--filter*) printf '%s' '[]' ;;
-  *) printf '%s' '${all}' ;;
-esac
-printf '}'
-`,
-    { mode: 0o755 },
-  );
-});
+import { repo, hook, tmp, modeFile, MARKER, FEEDBACK, project, runHook, poshBin, gemDir, prompt } from './support/plugin-fixture.mjs';
 
 // A fresh marker directory per call, unless a test passes one to reuse across calls.
 const toolUse = (cwd, tool_input, { session = 's', tool = 'Read', data, env = {} } = {}) =>
@@ -79,15 +19,10 @@ const toolUse = (cwd, tool_input, { session = 's', tool = 'Read', data, env = {}
     ...env,
   });
 
-const gemDir = (gem, version) => `/home/x/.local/share/mise/installs/ruby/4.0.9/lib/ruby/gems/4.0.0/gems/${gem}-${version}`;
-
-const prompt = (text) => JSON.stringify({ session_id: 'x', cwd: '/x', hook_event_name: 'UserPromptSubmit', prompt: text });
-
 let plugin;
 beforeAll(async () => {
   plugin = (await import(path.join(repo, 'opencode/posh.mjs'))).default;
 });
-beforeEach(() => fs.rmSync(modeFile, { force: true }));
 
 async function setupOpenCode(directory, servers = {}, implementation = plugin) {
   const state = { hooks: {}, sent: [], requested: [], directory };
@@ -861,7 +796,7 @@ test('every host manifest carries the released version', () => {
   const { version } = load('package.json');
   assert.match(version, /^\d+\.\d+\.\d+(-[\w.]+)?$/);
   for (const file of ['.claude-plugin/plugin.json', '.codex-plugin/plugin.json',
-    '.cursor-plugin/plugin.json', 'gemini-extension.json']) {
+    '.cursor-plugin/plugin.json', '.github/plugin/plugin.json', 'gemini-extension.json']) {
     assert.equal(load(file).version, version, file);
   }
 });

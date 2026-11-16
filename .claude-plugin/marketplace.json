@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "posh",
-      "description": "Gives Claude version-matched Ruby and gem API documentation and prompts it to check it before relying on memory.",
+      "description": "Gives coding agents version-matched Ruby and gem API documentation and prompts them to check it before relying on memory.",
       "source": "./",
       "category": "development"
     }
