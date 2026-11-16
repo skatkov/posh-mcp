@@ -89,10 +89,10 @@ before(async () => {
 });
 beforeEach(() => fs.rmSync(modeFile, { force: true }));
 
-async function setupOpenCode(directory, servers = {}) {
+async function setupOpenCode(directory, servers = {}, implementation = plugin) {
   const state = { hooks: {}, sent: [], requested: [], directory };
   const editor = { get: (n) => servers[n], set: (n, c) => { servers[n] = c; } };
-  await plugin.setup({
+  await implementation.setup({
     location: { directory },
     mcp: { transform: (fn) => fn(editor) },
     command: { transform: (fn) => fn({ add: (c) => { state.command = c; } }) },
@@ -116,6 +116,17 @@ async function setupOpenCode(directory, servers = {}) {
   state.run = (text) => state.command.execute({ sessionID: 's', prompt: { text }, delivery: 'steer' });
   state.servers = servers;
   return state;
+}
+
+async function pluginFixture(skill) {
+  const root = fs.mkdtempSync(path.join(tmp, 'plugin-'));
+  fs.mkdirSync(path.join(root, 'opencode'));
+  fs.mkdirSync(path.join(root, 'skills/posh'), { recursive: true });
+  fs.copyFileSync(path.join(repo, 'opencode/posh.mjs'), path.join(root, 'opencode/posh.mjs'));
+  fs.writeFileSync(path.join(root, 'skills/posh/SKILL.md'), skill);
+  fs.copyFileSync(path.join(repo, 'skills/posh/feedback.md'), path.join(root, 'skills/posh/feedback.md'));
+  for (const dir of ['shared', 'node_modules']) fs.symlinkSync(path.join(repo, dir), path.join(root, dir));
+  return (await import(path.join(root, 'opencode/posh.mjs'))).default;
 }
 
 async function withPolicyEnv(cwd, { data, env = {} }, run) {
@@ -257,12 +268,15 @@ test('feedback mode adds the evaluation rules on top of on, everywhere, in both 
 
 test('OpenCode /posh feedback persists the mode', async () => {
   const host = await setupOpenCode(project());
+  await host.run('on');
+  const ruleset = await host.system();
   await host.run('feedback');
-  assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'feedback');
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'feedback\n');
   assert.match(host.sent.at(-1).text, /POSH feedback mode is now on/);
   const text = await host.system();
   assert.ok(text.includes(FEEDBACK));
   assert.equal(text, text.trim());
+  assert.equal(text, ruleset + '\n\n' + fs.readFileSync(path.join(repo, 'skills/posh/feedback.md'), 'utf8').trim());
 });
 
 test('/posh auto still sees a project whose only marker is a gemspec', () => {
@@ -295,6 +309,36 @@ test('OpenCode adds the ruleset on model and compaction requests', async () => {
   assert.deepEqual(host.requested, [{ sessionID: 's' }, { sessionID: 's' }]);
 });
 
+test('OpenCode strips leading frontmatter with LF or CRLF but preserves body separators', async () => {
+  const body = '# Guidance\n\n---\nbody: keep this\n---\n\nKeep the body.';
+  const crlf = body.replaceAll('\n', '\r\n');
+  for (const [skill, expected] of [
+    [`---\nname: posh\n---\n\n${body}\n`, body],
+    [`---\r\nname: posh\r\n---\r\n\r\n${crlf}\r\n`, crlf],
+    [body, body],
+  ]) {
+    const implementation = await pluginFixture(skill);
+    const host = await setupOpenCode(project('Gemfile'), {}, implementation);
+    assert.equal(await host.system(), expected);
+  }
+});
+
+test('OpenCode uses the default HOME config path when XDG_CONFIG_HOME is absent', async () => {
+  const cwd = project('Gemfile');
+  const home = fs.mkdtempSync(path.join(tmp, 'default-home-'));
+  const mode = path.join(home, '.config/posh/agent-mode');
+  fs.mkdirSync(path.dirname(mode), { recursive: true });
+  fs.writeFileSync(mode, 'off\n');
+  await withPolicyEnv(cwd, { env: { HOME: home, XDG_CONFIG_HOME: undefined } }, async () => {
+    const implementation = await pluginFixture(fs.readFileSync(path.join(repo, 'skills/posh/SKILL.md'), 'utf8'));
+    const host = await setupOpenCode(cwd, {}, implementation);
+    assert.equal(await host.system(), '');
+    await host.run('on');
+    assert.equal(fs.readFileSync(mode, 'utf8'), 'on\n');
+    assert.ok((await host.system()).includes(MARKER));
+  });
+});
+
 test('OpenCode registers the MCP server but keeps a user-configured one', async () => {
   const host = await setupOpenCode(project());
   assert.deepEqual(host.servers.posh, { type: 'local', command: ['posh', 'mcp'] });
@@ -307,7 +351,7 @@ test('OpenCode registers the MCP server but keeps a user-configured one', async 
 test('OpenCode /posh persists the mode before the turn and passes other text through', async () => {
   const host = await setupOpenCode(project());
   await host.run('off');
-  assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'off');
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
   assert.match(host.sent.at(-1).text, /POSH is now off/);
   await host.run('');
   assert.ok((await host.system()).includes(MARKER));
@@ -875,6 +919,16 @@ test('OpenCode leaves ordinary tools, metadata and malformed inputs alone', asyn
     ['posh_read', { ref: 'gem:kamal' }],
     ['read', null], ['shell', 'bundle show kamal'], ['read', {}],
   ]) assert.equal(await openCodeTool(host, cwd, tool, input), null);
+});
+
+test('OpenCode rejects unknown tools and non-object inputs before requesting a session', async () => {
+  const cwd = project('Gemfile.lock');
+  const host = await setupOpenCode(cwd);
+  for (const [tool, input] of [
+    ['unknown', { path: gemDir('kamal', '2.12.0') }],
+    ...[null, undefined, false, 17, 'file', [], () => {}].map((input) => ['read', input]),
+  ]) assert.equal(await openCodeTool(host, cwd, tool, input), null);
+  assert.deepEqual(host.requested, []);
 });
 
 test('OpenCode retries proceed and new sessions get their own redirect', async () => {

@@ -17,7 +17,7 @@ const modeFile = path.join(
 );
 const ruleset = fs
   .readFileSync(path.join(root, 'skills/posh/SKILL.md'), 'utf8')
-  .replace(/^---\r?\n[\s\S]*?\r?\n---\s*/, '')
+  .replace(/^---\r?\n[\s\S]*?\r?\n---/, '')
   .trim();
 const feedback = fs.readFileSync(path.join(root, 'skills/posh/feedback.md'), 'utf8').trim();
 
@@ -115,7 +115,7 @@ export default {
           tool_input: tool === 'Read' ? { file_path: args.path } : args,
         });
       } catch {
-        return; // Runtime, session, POSH and transport failures leave permissions alone.
+        // Session and transport failures leave reason unset, so permissions stay unchanged.
       }
       if (reason) throw new ToolError({ message: reason });
     });
