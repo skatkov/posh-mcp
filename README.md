@@ -1,17 +1,11 @@
-# POSH MCP server
+# POSH plugins + mcp server
 
-Version-matched documentation for AI coding agents. Built for Ruby.
+Version-matched documentation for AI coding agents.
 
 POSH gives coding agents documentation selected from your Ruby version and
 `Gemfile.lock`: API references, READMEs, changelogs, and guides where available.
 Documentation lookups use local files and an index after syncing. The `sync`
 tool uses the network to download docs and update that index.
-
-**This repository contains public installation metadata and integration manifests,
-not the POSH application source. The contents of this repository are MIT licensed;
-POSH itself is proprietary software.** Its terminal
-documentation browser and basic sync are free; MCP and agent CLI tools require a
-POSH license. Current plans and trial details are at [poshtui.com](https://poshtui.com/#pricing).
 
 ## Why use POSH?
 
@@ -28,26 +22,16 @@ POSH license. Current plans and trial details are at [poshtui.com](https://posht
   Checking the right docs before coding helps avoid invented methods, outdated
   syntax, and retries caused by version mismatches.
 
-## Install and activate
-
-Supported platforms: macOS (Apple Silicon and Intel) and Linux (ARM64, x86-64,
-and x86). Windows and hosted HTTP connections are not supported.
+## Install POSH
+poshtui.com application is a hard dependency in this project. 
 
 ```sh
-brew install --cask skatkov/tap/poshtui
+curl -fsSL https://poshtui.com/install.sh | sh
 ```
-
-On Arch Linux, use `yay -S poshtui-bin`. Other installs are available from
-[GitHub Releases](https://github.com/skatkov/homebrew-tap/releases).
-
-Retrieve your license from the customer portal linked in your Polar purchase
-email. Activate it locally, outside agent chats:
 
 ```sh
 posh activate YOUR_LICENSE_KEY
 ```
-
-Never put a license key in a public issue, chat, or MCP configuration.
 
 From your Ruby project, download its documentation:
 
