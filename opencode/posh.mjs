@@ -100,26 +100,24 @@ export default {
     await ctx.session.hook('compaction', addRuleset);
 
     // Only translate the host contract here; every lookup decision is shared.
-    await ctx.tool.hook('execute.before', async (event) => {
+    await ctx.tool.hook('execute.before', async ({ tool: toolName, input: args, sessionID }) => {
       const tools = { read: 'Read', grep: 'Grep', glob: 'Glob', shell: 'Bash', webfetch: 'WebFetch' };
-      const tool = tools[event.tool];
-      if (!tool || !event.input || typeof event.input !== 'object' || Array.isArray(event.input)) return;
+      const tool = tools[toolName];
+      if (!tool || !args || typeof args !== 'object' || Array.isArray(args)) return;
       let reason;
       try {
-        const directory = await sessionDirectory(event.sessionID);
-        const args = event.input;
+        const directory = await sessionDirectory(sessionID);
         const cwd = tool === 'Bash' && typeof args.workdir === 'string'
           ? path.resolve(directory, args.workdir)
           : directory;
-        const input = {
-          session_id: `opencode-${event.sessionID}`, cwd, tool_name: tool,
+        reason = await poshRedirect({
+          session_id: `opencode-${sessionID}`, cwd, tool_name: tool,
           tool_input: tool === 'Read' ? { file_path: args.path } : args,
-        };
-        reason = await poshRedirect(input);
+        });
       } catch {
         return; // Runtime, session, POSH and transport failures leave permissions alone.
       }
-      if (typeof reason === 'string' && reason) throw new ToolError({ message: reason });
+      if (reason) throw new ToolError({ message: reason });
     });
   },
 };
