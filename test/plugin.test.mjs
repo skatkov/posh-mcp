@@ -53,7 +53,8 @@ before(() => {
   fs.writeFileSync(
     path.join(poshBin, 'posh'),
     `#!/bin/sh
-[ "$1" = docsets ] || exit 1
+[ "$1" = docsets ] && [ "$2" = --json ] && [ "$3" = --project ] || exit 1
+[ "$#" = 4 ] || { [ "$#" = 6 ] && [ "$5" = --filter ]; } || exit 1
 if [ -n "\${FAKE_POSH_EXPECT_PROJECT:-}" ]; then [ "$4" = "$FAKE_POSH_EXPECT_PROJECT" ] || exit 1; fi
 if [ -n "\${FAKE_POSH_RESPONSE+x}" ]; then printf '%s' "$FAKE_POSH_RESPONSE"; exit; fi
 printf '%s' '{"ok":true,"project_path":' "$FAKE_POSH_PROJECT_JSON" ',"data":'
@@ -465,6 +466,16 @@ test('stays out of the way outside Ruby projects and when POSH is off', () => {
   assert.equal(toolUse(project('Gemfile.lock'), read), null);
 });
 
+test('lookup redirects stay enabled with an explicit on, auto or feedback mode file', () => {
+  const cwd = project('Gemfile.lock');
+  fs.mkdirSync(path.dirname(modeFile), { recursive: true });
+  for (const mode of ['on', 'auto', 'feedback']) {
+    fs.writeFileSync(modeFile, `${mode}\n`);
+    const out = toolUse(cwd, { command: 'bundle show kamal' }, { tool: 'Bash' });
+    assert.match(out.permissionDecisionReason, /gem:kamal/, mode);
+  }
+});
+
 test('POSH_HOOK_DECISION downgrades the block to a prompt', () => {
   const out = toolUse(project('Gemfile.lock'), { file_path: `${gemDir('activerecord', '8.1.4.1')}/lib/active_record.rb` }, { env: { POSH_HOOK_DECISION: 'ask' } });
   assert.equal(out.permissionDecision, 'ask');
@@ -781,8 +792,13 @@ test('keeps search and read in the resolved project and shell-quotes the CLI pat
     tool: 'Bash', env: { FAKE_POSH_PROJECT_JSON: JSON.stringify(root) },
   });
   const reason = out.permissionDecisionReason;
-  assert.equal(JSON.parse(reason.match(/search tool with (\{.*?\}), or/)[1]).project, root);
-  assert.equal(JSON.parse(reason.match(/ref using (\{.*?\})\./)[1]).project, root);
+  assert.deepEqual(JSON.parse(reason.match(/search tool with (\{.*?\}), or/)[1]), {
+    query: '<symbol or page name>', project: root, ref: 'gem:kamal',
+  });
+  assert.deepEqual(JSON.parse(reason.match(/ref using (\{.*?\})\./)[1]), {
+    ref: '<returned document ref>', project: root,
+  });
+  assert.match(reason, /retry the original call; it will go through/);
   const cli = reason.match(/or `(.+?)`, then/)[1];
   const args = execFileSync('/bin/sh', ['-c', `posh() { printf '%s\\n' "$@"; }\n${cli}`], { encoding: 'utf8' }).trim().split('\n');
   assert.deepEqual(args, ['search', '<symbol>', '--ref', 'gem:kamal', '--project', root]);
@@ -829,6 +845,32 @@ test('accepts formatted JSON but rejects the wrong library, project, and Ruby-on
   assert.equal(call([{ ref: 'gem:kamal-extra', kinds: ['rdoc'] }]), null);
   assert.equal(call([{ ref: 'gem:kamal', kinds: ['rdoc'] }], project()), null);
   assert.equal(call([{ ref: 'lang:ruby', kinds: ['rdoc'] }], dir, { command: 'grep registry /app/vendor/bundle' }), null);
+});
+
+test('only an explicitly successful POSH response can consume a retry marker', async () => {
+  const cwd = project('Gemfile.lock');
+  const input = { cwd, session_id: 'response-status', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } };
+  const docs = { project_path: cwd, data: [{ ref: 'gem:kamal', kinds: ['rdoc'] }] };
+  for (const ok of [false, undefined, null, 1, 'true']) {
+    const data = fs.mkdtempSync(path.join(tmp, 'status-data-'));
+    const env = { FAKE_POSH_RESPONSE: JSON.stringify({ ...docs, ok }) };
+    assert.equal(await withPolicyEnv(cwd, { data, env }, () => poshRedirect(input)), null);
+    assert.deepEqual(fs.readdirSync(data), []);
+    assert.match(await withPolicyEnv(cwd, { data }, () => poshRedirect(input)), /gem:kamal/);
+    assert.equal(await withPolicyEnv(cwd, { data }, () => poshRedirect(input)), null);
+  }
+});
+
+test('malformed docset rows do not hide a later usable library', () => {
+  const cwd = project('Gemfile.lock');
+  const data = [
+    null, {}, { ref: 17 }, { ref: 'gem:kamal', kinds: 'rdoc' }, { ref: 'gem:kamal', kinds: [] },
+    { ref: 'gem:kamal', version: '2.12.0', kinds: ['rdoc'] },
+  ];
+  const out = toolUse(cwd, { command: 'bundle show kamal' }, {
+    tool: 'Bash', env: { FAKE_POSH_RESPONSE: JSON.stringify({ ok: true, project_path: cwd, data }) },
+  });
+  assert.match(out.permissionDecisionReason, /gem:kamal 2\.12\.0/);
 });
 
 test('fails open on missing/unsafe sessions, malformed payloads, and unsavable markers', () => {
