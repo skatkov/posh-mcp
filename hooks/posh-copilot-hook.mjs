@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { poshRedirect, rubyProject } from '../shared/lookup-policy.mjs';
+import { guidance, setMode } from '../shared/agent-lifecycle.mjs';
 
 try {
   const input = JSON.parse(fs.readFileSync(0, 'utf8'));
@@ -21,15 +20,23 @@ try {
     if (reason) output = { permissionDecision: 'deny', permissionDecisionReason: reason };
   } else {
     if (typeof input.cwd !== 'string' || !path.isAbsolute(input.cwd)) process.exit(0);
+    if (!fs.statSync(input.cwd).isDirectory()) process.exit(0);
+    const cwd = fs.realpathSync(input.cwd);
     if (event === 'UserPromptSubmit' && typeof input.transformedPrompt !== 'string') process.exit(0);
-    const hook = fileURLToPath(new URL('./posh-hook.sh', import.meta.url));
-    const { CLAUDE_PROJECT_DIR, ...env } = process.env;
-    const result = execFileSync('sh', [hook, event], {
-      cwd: input.cwd, env, input: JSON.stringify(input), encoding: 'utf8',
-    });
-    let context = result && JSON.parse(result).hookSpecificOutput?.additionalContext;
+    let context;
+    if (event === 'UserPromptSubmit') {
+      const [command, mode = 'on'] = typeof input.prompt === 'string' ? input.prompt.trim().split(/\s+/) : [];
+      if (['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh'].includes(command)) {
+        context = setMode(mode);
+        if (context) {
+          const text = guidance(cwd);
+          if (text) context += '\n\n' + text;
+          else if (mode === 'auto') context += ' This is not one, so stop following earlier POSH instructions.';
+        }
+      }
+    } else if (event === 'SessionStart' || event === 'SubagentStart') context = guidance(cwd);
     if (context) {
-      const project = rubyProject(fs.realpathSync(input.cwd));
+      const project = rubyProject(cwd);
       // Copilot defaults plugin MCP servers to the plugin directory, not the Ruby project.
       if (project) context += `\n\nWhen using POSH in this session, pass ${JSON.stringify({ project })} to every MCP tool call. On the CLI, keep the same absolute project path with --project. The MCP server's default project may be the plugin directory, not this Ruby project.`;
       output = event === 'UserPromptSubmit'

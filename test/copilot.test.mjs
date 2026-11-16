@@ -162,3 +162,39 @@ test('Copilot launcher exits successfully when Node is missing or crashes', () =
   fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
   assert.equal(runCopilot('preToolUse', cwd, {}, { PATH: bin }), null);
 });
+
+test('Copilot lifecycle runs directly in Node without shell helpers or POSH on PATH', () => {
+  const cwd = project('Gemfile');
+  for (const event of ['SessionStart', 'SubagentStart', 'UserPromptSubmit']) {
+    const out = JSON.parse(execFileSync(process.execPath, [path.join(repo, 'hooks/posh-copilot-hook.mjs'), event], {
+      env: { ...process.env, PATH: '' }, encoding: 'utf8',
+      input: JSON.stringify({ cwd, prompt: '/posh feedback', transformedPrompt: 'original' }),
+    }));
+    const text = out.additionalContext ?? out.modifiedTransformedPrompt;
+    assert.ok(text.includes(MARKER));
+    assert.match(text, /posh command is not on PATH/);
+    if (event === 'UserPromptSubmit') assert.ok(text.includes(FEEDBACK));
+  }
+});
+
+test('Copilot parses decoded command whitespace and ignores nested prompt keys', () => {
+  const cwd = project('Gemfile');
+  const out = runCopilot('userPromptTransformed', cwd, {
+    prompt: '/posh\toff\n', transformedPrompt: 'original', metadata: { prompt: '/posh on' },
+  });
+  assert.match(out.modifiedTransformedPrompt, /POSH is now off/);
+  assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'off');
+});
+
+test('Copilot rejects unusable lifecycle input before changing shared mode', () => {
+  const cwd = project('Gemfile');
+  for (const input of [
+    { cwd: 'relative' }, { cwd: path.join(cwd, 'missing') },
+    { cwd: path.join(cwd, 'Gemfile') }, { transformedPrompt: null },
+  ]) {
+    assert.equal(runCopilot('userPromptTransformed', cwd, {
+      prompt: '/posh off', transformedPrompt: 'original', ...input,
+    }), null);
+    assert.equal(fs.existsSync(modeFile), false);
+  }
+});

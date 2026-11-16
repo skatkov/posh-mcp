@@ -4,28 +4,28 @@
     "sessionStart": [
       {
         "type": "command",
-        "bash": "sh \"${COPILOT_PLUGIN_ROOT}/hooks/posh-hook.sh\" SessionStart copilot",
+        "bash": "sh \"${COPILOT_PLUGIN_ROOT}/hooks/posh-copilot-hook.sh\" SessionStart",
         "timeoutSec": 5
       }
     ],
     "subagentStart": [
       {
         "type": "command",
-        "bash": "sh \"${COPILOT_PLUGIN_ROOT}/hooks/posh-hook.sh\" SubagentStart copilot",
+        "bash": "sh \"${COPILOT_PLUGIN_ROOT}/hooks/posh-copilot-hook.sh\" SubagentStart",
         "timeoutSec": 5
       }
     ],
     "userPromptTransformed": [
       {
         "type": "command",
-        "bash": "sh \"${COPILOT_PLUGIN_ROOT}/hooks/posh-hook.sh\" UserPromptSubmit copilot",
+        "bash": "sh \"${COPILOT_PLUGIN_ROOT}/hooks/posh-copilot-hook.sh\" UserPromptSubmit",
         "timeoutSec": 5
       }
     ],
     "preToolUse": [
       {
         "type": "command",
-        "bash": "sh \"${COPILOT_PLUGIN_ROOT}/hooks/posh-hook.sh\" PreToolUse copilot",
+        "bash": "sh \"${COPILOT_PLUGIN_ROOT}/hooks/posh-copilot-hook.sh\" PreToolUse",
         "timeoutSec": 5
       }
     ]

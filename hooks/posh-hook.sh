@@ -1,16 +1,9 @@
 #!/bin/sh
-# POSH lifecycle hook for Claude Code, Codex and Copilot. $1 is the hook event name.
-# Claude/Codex lifecycle guidance needs only sh; Copilot and lookup interception need Node.
+# POSH lifecycle hook for Claude Code and Codex. $1 is the hook event name.
+# Lifecycle guidance needs only sh; lookup interception additionally requires Node.
 
 event=$1
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-if [ "${2:-}" = copilot ]; then
-  if command -v node >/dev/null 2>&1; then
-    node "$root/hooks/posh-copilot-hook.mjs" "$event"
-  fi
-  # Copilot fails closed on hook crashes; POSH is an adoption nudge, not a gate.
-  exit 0
-fi
 mode_file=${XDG_CONFIG_HOME:-$HOME/.config}/posh/agent-mode
 
 mode() {
