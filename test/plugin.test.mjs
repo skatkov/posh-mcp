@@ -209,6 +209,8 @@ test('auto treats home as not a project', async () => {
   fs.mkdirSync(dir);
   const { CLAUDE_PROJECT_DIR, ...env } = process.env;
   assert.equal(execFileSync('sh', [hook, 'SessionStart'], { cwd: dir, env: { ...env, HOME: home }, input: '', encoding: 'utf8' }), '');
+  const host = await setupOpenCode(dir);
+  assert.equal(await withPolicyEnv(home, { env: { HOME: home } }, () => host.system()), '');
 });
 
 test('hook commands switch modes and the OpenCode plugin honours the same file', async () => {
@@ -401,7 +403,9 @@ test('a timed-out POSH lookup fails open without consuming the retry marker', as
   fs.writeFileSync(posh, '#!/bin/sh\nexec /bin/sleep 30\n', { mode: 0o755 });
   const input = { cwd, session_id: 'timeout', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } };
   const call = () => withPolicyEnv(cwd, { data, env: { PATH: bin } }, () => poshRedirect(input));
+  const started = performance.now();
   assert.equal(await call(), null);
+  assert.ok(performance.now() - started < 10000, 'a stalled POSH lookup must not wait for the 30-second child to finish');
   assert.deepEqual(fs.readdirSync(data), []);
   fs.copyFileSync(path.join(poshBin, 'posh'), posh);
   assert.match(await call(), /gem:kamal/);
@@ -588,9 +592,14 @@ test('expands home-relative gem paths and recognizes searches of custom gem-home
   const home = path.join(cwd, 'home');
   fs.mkdirSync(home);
   for (const gemHome of ['~/custom gems', '~']) {
-    const env = { HOME: home, GEM_HOME: gemHome, GEM_PATH: '' };
+    const absoluteHome = gemHome === '~' ? home : path.join(home, 'custom gems');
+    const env = { HOME: home, GEM_HOME: absoluteHome, GEM_PATH: '' };
     const out = toolUse(cwd, { file_path: `${gemHome}/gems/kamal-2.12.0/lib/kamal.rb` }, { env });
     assert.match(out.permissionDecisionReason, /gem:kamal/);
+    const exported = toolUse(cwd, { file_path: `${absoluteHome}/gems/kamal-2.12.0/lib/kamal.rb` }, {
+      env: { ...env, GEM_HOME: gemHome },
+    });
+    assert.match(exported.permissionDecisionReason, /gem:kamal/);
     for (const root of [gemHome, `${gemHome}/gems`]) {
       const tree = toolUse(cwd, { path: root, pattern: 'def perform' }, { tool: 'Grep', env });
       assert.match(tree.permissionDecisionReason, /the installed source of the gems this project locks/);
