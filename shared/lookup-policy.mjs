@@ -28,9 +28,10 @@ function expandPath(value, cwd) {
 function lookupForPath(value, cwd) {
   const file = expandPath(value, cwd);
   // shortcut: infer installed layouts and exported gem homes, not arbitrary Ruby overrides; extend from observed misses.
-  const homes = [process.env.GEM_HOME, ...(process.env.GEM_PATH || '').split(path.delimiter)]
-    .filter(Boolean).map((home) => expandPath(home, cwd));
-  const roots = homes.filter((home) => file === home || file === `${home}/gems` || file.startsWith(`${home}/gems/`));
+  const homes = [process.env.GEM_HOME];
+  if (process.env.GEM_PATH) homes.push(...process.env.GEM_PATH.split(path.delimiter));
+  const roots = homes.filter(Boolean).map((home) => expandPath(home, cwd))
+    .filter((home) => file === home || file === `${home}/gems` || file.startsWith(`${home}/gems/`));
   const layouts = /\/(?:vendor\/bundle|ruby\/gems|gems\/\d+\.\d+(?:\.\d+)?|(?:\.gem|gem)\/(?:ruby|jruby|truffleruby)\/[^/]+|rubygems-integration\/(?:all|\d+\.\d+))(?=\/|$)/g;
   for (const match of file.matchAll(layouts)) roots.push(file.slice(0, match.index + match[0].length));
   const root = roots.sort((a, b) => b.length - a.length)[0];
@@ -127,11 +128,10 @@ function commandOperands(tool, args) {
   const spec = commandOptions[tool];
   if (!spec) return [];
   // shortcut: unknown options fail open; add observed forms rather than guessing operand roles.
-  // parseArgs rejects a present short key, so a long name must omit it entirely.
-  const option = (type) => (name) => [name, name.length === 1 ? { type, short: name } : { type }];
+  const option = (type) => (name) => [name, { type }];
   const options = Object.fromEntries([
-    ...spec.flags.split(' ').filter(Boolean).map(option('boolean')),
-    ...spec.values.split(' ').filter(Boolean).map(option('string')),
+    ...spec.flags.split(' ').map(option('boolean')),
+    ...spec.values.split(' ').map(option('string')),
   ]);
   const { positionals, values } = parseArgs({ args, options, allowPositionals: true });
   const operands = ['grep', 'rg', 'sed', 'awk'].includes(tool) &&
@@ -212,3 +212,5 @@ export async function poshRedirect(input) {
     return null;
   }
 }
+
+export { expandPath, lookupForPath, lookupForUrl, commandWords, commandOptions, commandOperands, lookupForCommand };

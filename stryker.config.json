@@ -3,7 +3,7 @@
   "mutate": ["shared/lookup-policy.mjs"],
   "testRunner": "command",
   "commandRunner": {
-    "command": "node --test test/plugin.test.mjs"
+    "command": "node --test test/plugin.test.mjs test/lookup-policy.test.mjs"
   },
   "coverageAnalysis": "off",
   "concurrency": 4,
