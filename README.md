@@ -119,7 +119,8 @@ Codex have no plugin API for the system prompt, so they receive them as hidden
 context at session start, after compaction, and when a subagent starts.
 Copilot receives them at session start/resume and when supported subagents start.
 Its built-in `general-purpose` agent does not emit the subagent-start hook, and
-there is no post-compaction reinjection hook.
+there is no dedicated post-compaction hook. Ordinary prompts receive a short
+current-project directive, not another copy of the full ruleset.
 
 | Command | Effect |
 | --- | --- |
@@ -167,8 +168,10 @@ text, and atomic retry markers. The adapters only translate their host contracts
   and shares lifecycle guidance and mode changes with OpenCode through
   [`shared/agent-lifecycle.mjs`](shared/agent-lifecycle.mjs). The shell launcher
   only preserves fail-open process behavior; lifecycle responses are serialized once.
-  Its guidance pins calls to the resolved Ruby project because Copilot starts
-  plugin MCP servers in the plugin directory by default.
+  Every transformed prompt refreshes the resolved Ruby project and supersedes
+  earlier project paths because Copilot starts plugin MCP servers in the plugin
+  directory by default. Leaving Ruby in auto mode revokes the earlier guidance;
+  forced-on mode without a resolved project asks the agent to locate one explicitly.
   It emits a native denial for redirects. Its shell launcher exits successfully
   even if Node fails, because Copilot otherwise denies calls on hook crashes.
 
