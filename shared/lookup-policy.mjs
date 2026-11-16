@@ -35,7 +35,7 @@ function lookupForPath(value, cwd) {
   for (const match of file.matchAll(layouts)) roots.push(file.slice(0, match.index + match[0].length));
   const root = roots.sort((a, b) => b.length - a.length)[0];
   if (!root) return null;
-  const match = file.slice(root.length).match(/^(?:\/(?:ruby|jruby|truffleruby)\/[^/]+|\/\d+\.\d+(?:\.\d+)?|\/\*\*)?\/gems\/([a-zA-Z0-9_.-]+)-[0-9][0-9a-zA-Z.]*/);
+  const match = file.slice(root.length).match(/^(?:\/(?:ruby|jruby|truffleruby)\/[^/]+|\/\d+\.\d+(?:\.\d+)?|\/\*\*)?\/gems\/([a-zA-Z0-9_.-]+)-[0-9]/);
   return match ? `gem:${match[1]}` : gemTree;
 }
 
