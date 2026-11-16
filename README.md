@@ -261,8 +261,11 @@ by Git.
 This is opt-in, not a CI or release gate. The command runner cannot select tests
 by coverage, so it reruns the entire plugin test file for every mutant, including
 the real timeout test. Expect a much slower run than `npm test`; four workers run
-by default. Review survivors for missing behavioral assertions or equivalent
-mutations before choosing a score threshold. No mutation types are excluded.
+by default. The runner allows 30 seconds of extra timeout headroom for subprocess
+contention. Review timeouts as well as survivors before trusting the score:
+Stryker counts timed-out mutants as detected, even if machine load caused them.
+Review survivors for missing behavioral assertions or equivalent mutations before
+choosing a score threshold. No mutation types are excluded.
 
 For a focused run or to check the JavaScript adapters themselves:
 
