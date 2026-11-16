@@ -42,11 +42,7 @@ try {
       const [command, mode = 'on'] = typeof input.prompt === 'string' ? input.prompt.trim().split(/\s+/) : [];
       if (['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh'].includes(command)) {
         context = setMode(mode);
-        if (context) {
-          const text = guidance(cwd);
-          if (text) context += '\n\n' + text;
-          else if (mode === 'auto') context += ' This is not one, so stop following earlier POSH instructions.';
-        }
+        if (context) context = [context, guidance(cwd)].filter(Boolean).join('\n\n');
       }
     } else if (event === 'SessionStart' || event === 'SubagentStart') context = guidance(cwd);
     if (context || event === 'UserPromptSubmit') {

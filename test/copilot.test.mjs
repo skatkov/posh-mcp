@@ -69,7 +69,7 @@ test('Copilot mode commands share state and preserve the transformed prompt', ()
   assert.match(on.modifiedTransformedPrompt, /Stop adding the POSH feedback section/);
   assert.ok(!on.modifiedTransformedPrompt.includes(FEEDBACK));
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'on');
-  assert.match(command('/posh auto', other).modifiedTransformedPrompt, /This is not one/);
+  assert.match(command('/posh auto', other).modifiedTransformedPrompt, /inactive in this non-Ruby directory \(auto mode\)/);
   assert.equal(fs.existsSync(modeFile), false);
   assert.equal(runCopilot('sessionStart', other), null);
 });
