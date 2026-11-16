@@ -237,6 +237,44 @@ Start with `docsets`, search using a returned library ref, and read the returned
 document or section ref. Sync missing docs, then retry. Do not invent refs or
 assume a tool call's project override persists to the next call.
 
+## Testing
+
+Run the deterministic tests with `npm ci && npm test`. They use a fake POSH
+executable and temporary projects, not your license or synced documentation.
+
+### Mutation testing
+
+With a current Node 22 release (22.18+) or Node 24.11+, run:
+
+```sh
+npm run test:mutation
+```
+
+StrykerJS mutates `shared/lookup-policy.mjs` and runs `test/plugin.test.mjs`
+against each mutant, including the Claude/Codex subprocess adapters and the
+OpenCode adapter. It uses the existing Node test runner; no test-framework
+migration is needed. It works in disposable copies, not the original source.
+The HTML report is `reports/mutation/index.html`; the machine-readable report is
+`reports/mutation/mutation.json`. Both reports and temporary sandboxes are ignored
+by Git.
+
+This is opt-in, not a CI or release gate. The command runner cannot select tests
+by coverage, so it reruns the entire plugin test file for every mutant, including
+the real timeout test. Expect a much slower run than `npm test`; four workers run
+by default. Review survivors for missing behavioral assertions or equivalent
+mutations before choosing a score threshold. No mutation types are excluded.
+
+For a focused run or to check the JavaScript adapters themselves:
+
+```sh
+npm run test:mutation -- --mutate shared/lookup-policy.mjs:161-196
+npm run test:mutation -- --mutate opencode/posh.mjs,hooks/posh-pre-tool-use.mjs
+```
+
+The `--mutate` argument replaces the default target. Mutation testing does not
+cover `hooks/posh-hook.sh` or prove compatibility with actual agent hosts; those
+still need shell behavior tests and live-host smoke tests.
+
 ## Releasing
 
 One command bumps every host manifest, writes the changelog entry, tags, and
