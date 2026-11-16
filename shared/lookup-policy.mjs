@@ -180,7 +180,7 @@ export async function poshRedirect(input) {
     }
     if (!lookup) return null;
     const ref = lookup === gemTree ? null : lookup;
-    const state = process.env.PLUGIN_DATA || process.env.CLAUDE_PLUGIN_DATA ||
+    const state = process.env.PLUGIN_DATA || process.env.CLAUDE_PLUGIN_DATA || process.env.COPILOT_PLUGIN_DATA ||
       path.join(process.env.XDG_CACHE_HOME || path.join(os.homedir(), '.cache'), 'posh');
     const projectKey = createHash('sha256').update(project).digest('hex');
     const marker = path.join(state, 'nudged', `${session}.${projectKey}.${ref || 'gem-tree'}`);
