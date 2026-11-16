@@ -1,0 +1,14 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "mutate": ["shared/lookup-policy.mjs"],
+  "testRunner": "command",
+  "commandRunner": {
+    "command": "node --test test/plugin.test.mjs"
+  },
+  "coverageAnalysis": "off",
+  "concurrency": 4,
+  "reporters": ["clear-text", "progress", "html", "json"],
+  "htmlReporter": {
+    "fileName": "reports/mutation/index.html"
+  }
+}
