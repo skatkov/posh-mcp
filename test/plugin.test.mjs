@@ -89,14 +89,15 @@ before(async () => {
 beforeEach(() => fs.rmSync(modeFile, { force: true }));
 
 async function setupOpenCode(directory, servers = {}) {
-  const state = { hooks: {}, sent: [], directory };
+  const state = { hooks: {}, sent: [], requested: [], directory };
   const editor = { get: (n) => servers[n], set: (n, c) => { servers[n] = c; } };
   await plugin.setup({
     location: { directory },
     mcp: { transform: (fn) => fn(editor) },
     command: { transform: (fn) => fn({ add: (c) => { state.command = c; } }) },
     session: {
-      get: async () => {
+      get: async (input) => {
+        state.requested.push(input);
         if (state.sessionError) throw new Error('session unavailable');
         return { location: { directory: state.directory } };
       },
@@ -108,6 +109,7 @@ async function setupOpenCode(directory, servers = {}) {
   state.system = async (kind = 'context') => {
     const event = { sessionID: 's', system: [] };
     await state.hooks[kind](event);
+    for (const part of event.system) assert.equal(part.type, 'text');
     return event.system.map((part) => part.text).join('\n');
   };
   state.run = (text) => state.command.execute({ sessionID: 's', prompt: { text }, delivery: 'steer' });
@@ -255,7 +257,9 @@ test('OpenCode /posh feedback persists the mode', async () => {
   await host.run('feedback');
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'feedback');
   assert.match(host.sent.at(-1).text, /POSH feedback mode is now on/);
-  assert.ok((await host.system()).includes(FEEDBACK));
+  const text = await host.system();
+  assert.ok(text.includes(FEEDBACK));
+  assert.equal(text, text.trim());
 });
 
 test('/posh auto still sees a project whose only marker is a gemspec', () => {
@@ -279,12 +283,20 @@ test('shell metacharacters in a prompt are inert', () => {
 
 test('OpenCode adds the ruleset on model and compaction requests', async () => {
   const host = await setupOpenCode(project('Gemfile'));
-  assert.ok((await host.system('context')).includes(MARKER));
-  assert.ok((await host.system('compaction')).includes(MARKER));
+  for (const kind of ['context', 'compaction']) {
+    const text = await host.system(kind);
+    assert.ok(text.startsWith(`# ${MARKER}`));
+    assert.equal(text, text.trim());
+    assert.doesNotMatch(text, /argument-hint:/);
+  }
+  assert.deepEqual(host.requested, [{ sessionID: 's' }, { sessionID: 's' }]);
 });
 
 test('OpenCode registers the MCP server but keeps a user-configured one', async () => {
-  assert.deepEqual((await setupOpenCode(project())).servers.posh, { type: 'local', command: ['posh', 'mcp'] });
+  const host = await setupOpenCode(project());
+  assert.deepEqual(host.servers.posh, { type: 'local', command: ['posh', 'mcp'] });
+  assert.equal(host.command.name, 'posh');
+  assert.match(host.command.description, /on, off, auto, feedback/);
   const mine = { type: 'local', command: ['/opt/posh', 'mcp'] };
   assert.equal((await setupOpenCode(project(), { posh: mine })).servers.posh, mine);
 });
@@ -304,9 +316,42 @@ test('OpenCode /posh persists the mode before the turn and passes other text thr
   assert.ok(host.sent.at(-1).text.includes(MARKER));
 });
 
+test('OpenCode trims mode commands and auto is safe when the mode file is already absent', async () => {
+  const host = await setupOpenCode(project());
+  await host.run('auto');
+  assert.equal(fs.existsSync(modeFile), false);
+  await host.run('  off \n');
+  assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'off');
+  fs.writeFileSync(modeFile, 'unknown-mode\n');
+  assert.equal(await host.system(), '');
+});
+
+test('OpenCode preserves command attachments and delivery but removes stale mention offsets', async () => {
+  const host = await setupOpenCode(project('Gemfile'));
+  const file = { uri: 'file:///project/model.rb', name: 'model.rb', description: 'Review this file', source: { type: 'uri', uri: 'file:///project/model.rb' } };
+  const prompt = {
+    text: '  @review @posh model.rb  ',
+    files: [{ ...file, mention: { start: 16, end: 24, text: 'model.rb' } }, { uri: 'file:///project/other.rb' }],
+    agents: [{ name: 'review', mention: { start: 2, end: 9, text: '@review' } }],
+    skills: [{ id: 'posh', mention: { start: 10, end: 15, text: '@posh' } }],
+  };
+  const original = structuredClone(prompt);
+  await host.command.execute({ sessionID: 'attachments', prompt, delivery: 'queue' });
+  const { text, ...sent } = host.sent.at(-1);
+  assert.ok(text.endsWith('\n\n@review @posh model.rb'));
+  assert.deepEqual(sent, {
+    sessionID: 'attachments', delivery: 'queue',
+    files: [file, { uri: 'file:///project/other.rb' }],
+    agents: [{ name: 'review' }],
+    skills: [{ id: 'posh' }],
+  });
+  assert.deepEqual(prompt, original);
+});
+
 test('the module has only a default export (OpenCode treats exported functions as plugins)', async () => {
   const mod = await import(path.join(repo, 'opencode/posh.mjs'));
   assert.deepEqual(Object.keys(mod), ['default']);
+  assert.equal(mod.default.id, 'posh');
 });
 
 // --- PreToolUse: the gem documentation routes -------------------------------
@@ -314,6 +359,7 @@ test('the module has only a default export (OpenCode treats exported functions a
 test('denies installed gem source and names the POSH call to make instead', () => {
   const dir = project('Gemfile.lock');
   const out = toolUse(dir, { file_path: `${gemDir('activerecord', '8.1.4.1')}/lib/active_record/relation.rb` });
+  assert.equal(out.hookEventName, 'PreToolUse');
   assert.equal(out.permissionDecision, 'deny');
   assert.match(out.permissionDecisionReason, /gem:activerecord 8\.1\.4\.1/);
   assert.match(out.permissionDecisionReason, /"ref":"gem:activerecord"/);
@@ -743,6 +789,7 @@ test('OpenCode maps all five built-in lookup tools to the shared policy', async 
   const host = await setupOpenCode(cwd);
   for (const [tool, input] of [
     ['read', { path: `${gemDir('kamal', '2.12.0')}/lib/kamal.rb` }],
+    ['read', { path: `${gemDir('kamal', '2.12.0')}/lib/kamal.rb`, workdir: project('package.json') }],
     ['grep', { path: 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib', pattern: 'registry' }],
     ['glob', { pattern: '**/vendor/bundle/**/gems/kamal-2.12.0/lib/**/*.rb' }],
     ['shell', { command: 'bundle show kamal' }],
