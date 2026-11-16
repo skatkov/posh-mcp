@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import { poshRedirect } from '../shared/lookup-policy.mjs';
 
 try {
-  const reason = await poshRedirect(JSON.parse(fs.readFileSync(0, 'utf8')));
+  const reason = await poshRedirect(JSON.parse(fs.readFileSync(0).toString()));
   if (reason) {
     console.log(JSON.stringify({ hookSpecificOutput: {
       hookEventName: 'PreToolUse',
