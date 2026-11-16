@@ -55,6 +55,7 @@ before(() => {
     `#!/bin/sh
 [ "$1" = docsets ] && [ "$2" = --json ] && [ "$3" = --project ] || exit 1
 [ "$#" = 4 ] || { [ "$#" = 6 ] && [ "$5" = --filter ]; } || exit 1
+if [ -n "\${FAKE_POSH_CALLS:-}" ]; then printf '%s\\n' "$@" >> "$FAKE_POSH_CALLS"; fi
 if [ -n "\${FAKE_POSH_EXPECT_PROJECT:-}" ]; then [ "$4" = "$FAKE_POSH_EXPECT_PROJECT" ] || exit 1; fi
 if [ -n "\${FAKE_POSH_RESPONSE+x}" ]; then printf '%s' "$FAKE_POSH_RESPONSE"; exit; fi
 printf '%s' '{"ok":true,"project_path":' "$FAKE_POSH_PROJECT_JSON" ',"data":'
@@ -395,6 +396,41 @@ test('shared policy returns a harness-neutral reason from normalized input, inde
   assert.match(reason, /gem:kamal/);
 });
 
+test('shared policy rejects non-object payloads and non-string session and directory values', async () => {
+  const cwd = project('Gemfile.lock');
+  const valid = { cwd, session_id: 'types', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } };
+  for (const input of [
+    Object.assign([], valid), Object.assign(() => {}, valid),
+    { ...valid, tool_input: Object.assign([], valid.tool_input) },
+    { ...valid, tool_input: Object.assign(() => {}, valid.tool_input) },
+    { ...valid, session_id: 17 }, { ...valid, cwd: Buffer.from(cwd) },
+  ]) assert.equal(await withPolicyEnv(cwd, {}, () => poshRedirect(input)), null);
+});
+
+test('non-Ruby projects do not inspect tool-specific inputs', async () => {
+  const cwd = project('package.json');
+  let reads = 0;
+  const tool_input = { get file_path() { reads++; return gemDir('kamal', '2.12.0'); } };
+  assert.equal(await withPolicyEnv(cwd, {}, () => poshRedirect({
+    cwd, session_id: 'not-ruby', tool_name: 'Read', tool_input,
+  })), null);
+  assert.equal(reads, 0);
+});
+
+test('POSH discovery filters the requested gem and is not repeated for a retry', async () => {
+  const cwd = project('Gemfile.lock');
+  const data = fs.mkdtempSync(path.join(tmp, 'discovery-data-'));
+  const calls = path.join(tmp, 'discovery-calls');
+  const input = { cwd, session_id: 'discovery', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } };
+  await withPolicyEnv(cwd, { data, env: { FAKE_POSH_CALLS: calls } }, async () => {
+    assert.match(await poshRedirect(input), /gem:kamal/);
+    assert.equal(await poshRedirect(input), null);
+  });
+  assert.deepEqual(fs.readFileSync(calls, 'utf8').trim().split('\n'), [
+    'docsets', '--json', '--project', cwd, '--filter', 'gem:kamal',
+  ]);
+});
+
 test('a timed-out POSH lookup fails open without consuming the retry marker', async () => {
   const cwd = project('Gemfile.lock');
   const data = fs.mkdtempSync(path.join(tmp, 'timeout-data-'));
@@ -563,6 +599,22 @@ test('redirects a search of the whole gem tree, where no single gem is named', (
     assert.match(out.permissionDecisionReason, /the installed source of the gems this project locks/);
     assert.match(out.permissionDecisionReason, /posh search '<symbol>'/);
   }
+});
+
+test('gem-tree redirects have their own marker and give an unfiltered, project-pinned search', () => {
+  const cwd = project('Gemfile.lock');
+  const data = fs.mkdtempSync(path.join(tmp, 'tree-data-'));
+  const out = toolUse(cwd, { path: '/app/vendor/bundle', pattern: 'def perform' }, {
+    tool: 'Grep', session: 'tree', data,
+  });
+  const reason = out.permissionDecisionReason;
+  assert.match(fs.readdirSync(path.join(data, 'nudged'))[0], /^tree\.[a-f0-9]{64}\.gem-tree$/);
+  assert.deepEqual(JSON.parse(reason.match(/search tool with (\{.*?\}), or/)[1]), {
+    query: '<symbol or page name>', project: cwd,
+  });
+  const cli = reason.match(/or `(.+?)`, then/)[1];
+  const args = execFileSync('/bin/sh', ['-c', `posh() { printf '%s\\n' "$@"; }\n${cli}`], { encoding: 'utf8' }).trim().split('\n');
+  assert.deepEqual(args, ['search', '<symbol>', '--project', cwd]);
 });
 
 test('recognizes custom RubyGems homes without treating sibling application files as gems', () => {
@@ -801,6 +853,7 @@ test('OpenCode maps all five built-in lookup tools to the shared policy', async 
     ['read', { path: `${gemDir('kamal', '2.12.0')}/lib/kamal.rb`, workdir: project('package.json') }],
     ['grep', { path: 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib', pattern: 'registry' }],
     ['glob', { pattern: '**/vendor/bundle/**/gems/kamal-2.12.0/lib/**/*.rb' }],
+    ['glob', { path: 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib', pattern: '*.rb' }],
     ['shell', { command: 'bundle show kamal' }],
     ['webfetch', { url: 'https://rubydoc.info/gems/kamal/Kamal' }],
   ]) {
@@ -965,6 +1018,23 @@ test('accepts formatted JSON but rejects the wrong library, project, and Ruby-on
   assert.equal(call([{ ref: 'gem:kamal-extra', kinds: ['rdoc'] }]), null);
   assert.equal(call([{ ref: 'gem:kamal', kinds: ['rdoc'] }], project()), null);
   assert.equal(call([{ ref: 'lang:ruby', kinds: ['rdoc'] }], dir, { command: 'grep registry /app/vendor/bundle' }), null);
+});
+
+test('POSH project paths are type-checked before filesystem resolution', async (t) => {
+  const cwd = project('Gemfile.lock');
+  const realpath = fs.realpathSync;
+  const resolved = [];
+  t.mock.method(fs, 'realpathSync', (file, ...args) => {
+    resolved.push(file);
+    return realpath(file, ...args);
+  });
+  const env = { FAKE_POSH_RESPONSE: JSON.stringify({
+    ok: true, project_path: 17, data: [{ ref: 'gem:kamal', kinds: ['rdoc'] }],
+  }) };
+  assert.equal(await withPolicyEnv(cwd, { env }, () => poshRedirect({
+    cwd, session_id: 'project-type', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' },
+  })), null);
+  assert.deepEqual(resolved, [cwd]);
 });
 
 test('only an explicitly successful POSH response can consume a retry marker', async () => {
