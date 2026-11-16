@@ -123,7 +123,10 @@ async function withPolicyEnv(cwd, { data, env = {} }, run) {
     ...env,
   };
   const previous = Object.fromEntries(Object.keys(overrides).map((key) => [key, process.env[key]]));
-  Object.assign(process.env, overrides);
+  for (const [key, value] of Object.entries(overrides)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   try {
     return await run();
   } finally {
@@ -389,6 +392,7 @@ for (const [name, tool, tool_input] of [
   ['bundle open', 'Bash', { command: 'bundle open kamal' }],
   ['a .gem download', 'Bash', { command: 'curl -sSLo k.gem https://rubygems.org/downloads/kamal-2.12.0.gem' }],
   ['rubydoc.info', 'WebFetch', { url: 'https://rubydoc.info/gems/kamal/Kamal' }],
+  ['a bare gem page', 'WebFetch', { url: 'https://rubygems.org/gems/kamal' }],
   ['vendor/bundle source', 'Read', { file_path: '/app/vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib/kamal.rb' }],
   ['relative vendored source', 'Grep', { path: 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0/lib', pattern: 'registry' }],
   ['a source glob', 'Glob', { pattern: '**/vendor/bundle/**/gems/kamal-2.12.0/lib/**/*.rb' }],
@@ -425,6 +429,8 @@ for (const [name, tool, tool_input] of [
   ['an embedded documentation URL', 'WebFetch', { url: 'https://example.com/?next=https://rubygems.org/gems/kamal' }],
   ['a documentation URL in a fragment', 'WebFetch', { url: 'https://example.com/#https://guides.rubyonrails.org/' }],
   ['a lookalike documentation host', 'WebFetch', { url: 'https://rubygems.org.example.com/gems/kamal' }],
+  ['a gem page under an unrelated URL prefix', 'WebFetch', { url: 'https://rubygems.org/other/gems/kamal' }],
+  ['a gem download under an unrelated URL prefix', 'WebFetch', { url: 'https://rubygems.org/other/downloads/kamal-2.12.0.gem' }],
   ['a documentation URL in shell output', 'Bash', { command: 'echo https://rubygems.org/gems/kamal' }],
   ['a source locator in shell output', 'Bash', { command: 'echo "bundle show kamal"' }],
   ['an unquoted locator in a documentation edit', 'Bash', { command: 'echo bundle show kamal >> README.md' }],
@@ -531,6 +537,56 @@ test('recognizes each exported gem home without needing a Ruby executable', () =
   }
 });
 
+test('expands home-relative gem paths and recognizes searches of custom gem-home roots', () => {
+  const cwd = project('Gemfile.lock');
+  const home = path.join(cwd, 'home');
+  fs.mkdirSync(home);
+  for (const gemHome of ['~/custom gems', '~']) {
+    const env = { HOME: home, GEM_HOME: gemHome, GEM_PATH: '' };
+    const out = toolUse(cwd, { file_path: `${gemHome}/gems/kamal-2.12.0/lib/kamal.rb` }, { env });
+    assert.match(out.permissionDecisionReason, /gem:kamal/);
+    for (const root of [gemHome, `${gemHome}/gems`]) {
+      const tree = toolUse(cwd, { path: root, pattern: 'def perform' }, { tool: 'Grep', env });
+      assert.match(tree.permissionDecisionReason, /the installed source of the gems this project locks/);
+    }
+    assert.equal(toolUse(cwd, { file_path: `${gemHome}-sibling/gems/kamal-2.12.0/lib/kamal.rb` }, { env }), null);
+  }
+});
+
+test('a search with no path uses the current directory inside an installed gem', () => {
+  const root = project('Gemfile.lock');
+  const cwd = path.join(root, 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0');
+  fs.mkdirSync(cwd, { recursive: true });
+  const out = toolUse(cwd, { pattern: 'def perform' }, {
+    tool: 'Grep', env: { FAKE_POSH_PROJECT_JSON: JSON.stringify(root) },
+  });
+  assert.match(out.permissionDecisionReason, /gem:kamal/);
+});
+
+test('default config and retry state stay in the isolated HOME or XDG cache', async () => {
+  const cwd = project('Gemfile.lock');
+  const home = fs.mkdtempSync(path.join(tmp, 'home-'));
+  const mode = path.join(home, '.config/posh/agent-mode');
+  fs.mkdirSync(path.dirname(mode), { recursive: true });
+  const cache = path.join(home, 'xdg-cache');
+  const input = { cwd, session_id: 'fallback', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } };
+  for (const xdg of [cache, undefined]) {
+    const env = {
+      HOME: home, XDG_CONFIG_HOME: undefined, XDG_CACHE_HOME: xdg,
+      PLUGIN_DATA: undefined, CLAUDE_PLUGIN_DATA: undefined,
+    };
+    await withPolicyEnv(cwd, { env }, async () => {
+      fs.writeFileSync(mode, 'off\n');
+      assert.equal(await poshRedirect(input), null);
+      fs.writeFileSync(mode, 'on\n');
+      assert.match(await poshRedirect(input), /gem:kamal/);
+      assert.equal(await poshRedirect(input), null);
+      const markers = path.join(xdg || path.join(home, '.cache'), 'posh/nudged');
+      assert.equal(fs.readdirSync(markers).length, 1);
+    });
+  }
+});
+
 test('recognizes standard user, XDG, distro and alternate-Ruby installation layouts', () => {
   const cwd = project('Gemfile.lock');
   for (const home of [
@@ -600,15 +656,23 @@ test('shell operands still identify source files and fetched URLs after known op
   const cwd = project('Gemfile.lock');
   const source = `${gemDir('kamal', '2.12.0')}/lib/kamal.rb`;
   for (const command of [
+    `cat -n '${source}'`,
+    `ls -l '${source}'`,
+    `cd -P '${source}'`,
     `grep -F needle '${source}'`,
     `grep -e needle '${source}'`,
+    `grep -f patterns.txt '${source}'`,
     `grep --regexp=needle '${source}'`,
+    `rg -n needle '${source}'`,
     `rg -g '*.rb' needle '${source}'`,
     `sed -n '1,30p' '${source}'`,
     `sed -e 's/old/new/' '${source}'`,
+    `sed --expression='1p' '${source}'`,
     `awk -F : '{ print $1 }' '${source}'`,
     `awk '{ print source }' source=README.md '${source}'`,
     `awk -f local.awk source=README.md '${source}'`,
+    `awk -f local.awk '${source}'`,
+    `find '${source}'`,
     `find '${source}' -name '*.rb'`,
     `head -n 20 '${source}'`,
     `tail --lines=20 '${source}'`,
