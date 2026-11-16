@@ -628,6 +628,18 @@ test('Claude Code and Codex register interception through the same hook adapter'
   assert.ok(codex.hooks.some((file) => load(file).hooks.PreToolUse));
 });
 
+// The publish workflow runs this suite before npm publish, so a release whose
+// manifests drifted apart fails here instead of shipping.
+test('every host manifest carries the released version', () => {
+  const load = (file) => JSON.parse(fs.readFileSync(path.join(repo, file), 'utf8'));
+  const { version } = load('package.json');
+  assert.match(version, /^\d+\.\d+\.\d+(-[\w.]+)?$/);
+  for (const file of ['.claude-plugin/plugin.json', '.codex-plugin/plugin.json',
+    '.cursor-plugin/plugin.json', 'gemini-extension.json']) {
+    assert.equal(load(file).version, version, file);
+  }
+});
+
 test('Codex manifest command denies canonical Bash calls, never emits unsupported ask, and allows retries', () => {
   const cwd = project('Gemfile.lock');
   const manifest = JSON.parse(fs.readFileSync(path.join(repo, 'hooks/codex-hooks.json'), 'utf8'));

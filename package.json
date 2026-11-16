@@ -39,7 +39,7 @@
   },
   "scripts": {
     "test": "node --test test/*.mjs",
-    "preversion": "npm test",
+    "preversion": "git symbolic-ref --short HEAD | grep -qx main || { echo 'Release from main only.' >&2; exit 1; }; npm test",
     "version": "node scripts/sync-version.mjs",
     "postversion": "git push --follow-tags"
   }

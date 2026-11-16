@@ -14,25 +14,25 @@ const changelog = 'CHANGELOG.md';
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
 
 const { version } = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-if (!/^\d+\.\d+\.\d+$/.test(version)) throw new Error(`unexpected version ${version}`);
+if (!/^\d+\.\d+\.\d+(-[\w.]+)?$/.test(version)) throw new Error(`unexpected version ${version}`);
 
 for (const file of manifests) {
   const before = fs.readFileSync(file, 'utf8');
-  const after = before.replace(/^(\s*"version":\s*")[^"]+(")/m, `$1${version}$2`);
-  if (before === after) throw new Error(`no version field replaced in ${file}`);
-  fs.writeFileSync(file, after);
+  // Rerunning a half-finished release finds some manifests already bumped, so an
+  // unchanged file is fine; a missing version field is not.
+  if (!/^\s*"version":/m.test(before)) throw new Error(`no version field in ${file}`);
+  fs.writeFileSync(file, before.replace(/^(\s*"version":\s*")[^"]+(")/m, `$1${version}$2`));
 }
 
-// First release has no tag to diff against, so fall back to the last release commit.
 let since = '';
 try {
   since = git('describe', '--tags', '--abbrev=0', '--match', 'v*');
 } catch {
-  since = git('log', '--format=%H', '--grep=^Release ', '-1') || '';
+  // No release tag yet, so the whole history is the first entry.
 }
 const subjects = git('log', '--format=%s', ...(since ? [`${since}..HEAD`] : []))
   .split('\n')
-  .filter((line) => line && !line.startsWith('Release '));
+  .filter((line) => line && !/^Release \d/.test(line));
 
 const entry = `## ${version} — ${new Date().toISOString().slice(0, 10)}\n\n` +
   `${subjects.map((line) => `- ${line}`).join('\n') || '- No changes recorded.'}\n`;
