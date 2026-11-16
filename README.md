@@ -242,7 +242,10 @@ Local runs are opt-in. [Mutation CI](.github/workflows/mutation.yml) runs on pul
 requests and pushes to `main`, or manually through GitHub Actions. Separate Node
 26 jobs mutate the shared policy and both JavaScript adapters, and upload HTML
 and JSON reports as `mutation-policy` and `mutation-adapters` artifacts for seven
-days. There is no mutation-score gate yet, and the release workflow is unchanged.
+days. Local runs and both CI jobs require a **100% mutation score**: Stryker exits
+nonzero below that threshold. This is not a line-coverage requirement. Known
+survivors must be addressed before mutation CI passes; the release workflow is
+unchanged.
 
 The command runner cannot select tests by coverage, so it reruns the entire
 plugin test file for every mutant, including
@@ -250,8 +253,9 @@ the real timeout test. Expect a much slower run than `npm test`; four workers ru
 by default. The runner allows 30 seconds of extra timeout headroom for subprocess
 contention. Review timeouts as well as survivors before trusting the score:
 Stryker counts timed-out mutants as detected, even if machine load caused them.
-Review survivors for missing behavioral assertions or equivalent mutations before
-choosing a score threshold. No mutation types are excluded.
+Review survivors for missing behavioral assertions or equivalent mutations;
+prefer useful tests or safe simplification over blanket exclusions. No mutation
+types are excluded.
 
 For a focused run or to check the JavaScript adapters themselves:
 

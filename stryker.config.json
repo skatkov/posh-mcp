@@ -8,6 +8,11 @@
   "coverageAnalysis": "off",
   "concurrency": 4,
   "timeoutMS": 30000,
+  "thresholds": {
+    "high": 100,
+    "low": 100,
+    "break": 100
+  },
   "reporters": ["clear-text", "progress", "html", "json"],
   "htmlReporter": {
     "fileName": "reports/mutation/index.html"
