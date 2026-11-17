@@ -24,19 +24,37 @@ jobs:
         include:
           - target: policy
             files: shared/lookup-policy.mjs
+            dependencies: opencode/posh.mjs
           - target: adapters
             files: opencode/posh.mjs,hooks/posh-pre-tool-use.mjs
+            dependencies: shared/lookup-policy.mjs
+          - target: evidence
+            files: evals/check-evidence.mjs
+            dependencies: evals/expected-reads.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        id: node
         with:
           node-version: '26'
           cache: npm
 
       - run: npm ci
 
-      - run: npm run test:mutation -- --mutate "${{ matrix.files }}"
+      # Stryker tracks mutated files and tests, not their other inputs.
+      # hashFiles has no brace expansion; hash all hooks plus the other JS target.
+      - name: Restore incremental results
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        env:
+          CACHE_PREFIX: mutation-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ matrix.target }}-${{ hashFiles('package.json', 'package-lock.json', 'stryker.config.json', 'vitest.config.mjs', '.github/workflows/mutation.yml', 'hooks/**', 'skills/**', 'evals/**/*.json', 'evals/**/*.sh', 'evals/**/*.yaml', 'test/fixtures/**', '**/plugin.json', 'gemini-extension.json', matrix.dependencies) }}
+        with:
+          path: reports/mutation/stryker-incremental.json
+          key: ${{ env.CACHE_PREFIX }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ env.CACHE_PREFIX }}-
+
+      - run: npm run test:mutation -- --mutate "${{ matrix.files }}" ${{ github.event_name == 'workflow_dispatch' && '--force' || '' }}
 
       - name: Upload mutation reports
         if: always()

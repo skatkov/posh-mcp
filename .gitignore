@@ -2,3 +2,4 @@ node_modules/
 evals/results/
 .stryker-tmp/
 reports/mutation/
+reports/coverage/

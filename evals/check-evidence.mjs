@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const expectedReads = JSON.parse(fs.readFileSync(new URL('./expected-reads.json', import.meta.url), 'utf8'));
+export const expectedReads = JSON.parse(fs.readFileSync(new URL('./expected-reads.json', import.meta.url)).toString());
 
 const normalizeRef = (ref) => typeof ref === 'string' ? ref.replace(/^posh:\/\//, '') : null;
 
@@ -15,14 +15,11 @@ function matchesDocument(actual, expected) {
 }
 
 function isNokogiriSource(value) {
-  try {
-    const url = new URL(value);
-    return ['http:', 'https:'].includes(url.protocol) &&
-      ['github.com', 'www.github.com', 'raw.githubusercontent.com'].includes(url.hostname) &&
-      /^\/sparklemotion\/nokogiri(?:\/|$)/i.test(url.pathname);
-  } catch {
-    return false;
-  }
+  let url;
+  try { url = new URL(value); } catch {}
+  return url !== undefined && ['http:', 'https:'].includes(url.protocol) &&
+    ['github.com', 'www.github.com', 'raw.githubusercontent.com'].includes(url.hostname) &&
+    /^\/sparklemotion\/nokogiri(?:\/|$)/i.test(url.pathname);
 }
 
 export function inspectTrace(trace, expected) {
@@ -45,7 +42,7 @@ export function inspectTrace(trace, expected) {
     const blocks = event.message?.content;
     if (!Array.isArray(blocks)) continue;
     for (const block of blocks) {
-      if (!block || typeof block !== 'object') continue;
+      if (block?.type !== 'tool_use' && block?.type !== 'tool_result') continue;
       if (event.type === 'assistant' && block.type === 'tool_use' && typeof block.id === 'string') {
         const input = block.input;
         const scope = input && Object.hasOwn(input, 'project') ? input.project : project;
@@ -74,12 +71,11 @@ export function inspectTrace(trace, expected) {
         continue;
       }
       if (!call.ref) continue;
-      if (typeof content !== 'string') continue;
       let body;
-      try { body = JSON.parse(content); } catch { continue; }
+      try { body = JSON.parse(content); } catch {}
       if (body?.ok === true && body.summary === 'Document read' &&
           normalizeRef(body.data?.ref) === call.ref &&
-          typeof body.data?.content === 'string' && body.data.content.trim()) {
+          typeof body.data.content === 'string' && body.data.content.trim()) {
         evidence.read = true;
         if (call.redirected) evidence.readAfterRedirect = true;
       }
@@ -97,7 +93,7 @@ export function checkReport(report, runsOverride) {
       !['none', 'with-without'].includes(report.suite?.ablation)) {
     throw new Error('Expected a complete schemaVersion 1 eval report; partial runs are not adoption evidence');
   }
-  const arms = report.suite?.ablation === 'with-without' ? ['with', 'without'] : ['with'];
+  const arms = report.suite.ablation === 'with-without' ? ['with', 'without'] : ['with'];
   const failures = [];
   let checked = 0;
   for (const spec of report.cases) {
@@ -145,7 +141,7 @@ if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === imp
     if (!reportPath || (flag !== undefined && (flag !== '--runs' || count === undefined)) || extra.length) {
       throw new Error('Usage: node evals/check-evidence.mjs REPORT.json [--runs N] (run evals with --keep-temp)');
     }
-    const { checked, failures } = checkReport(JSON.parse(fs.readFileSync(reportPath, 'utf8')), flag ? Number(count) : undefined);
+    const { checked, failures } = checkReport(JSON.parse(fs.readFileSync(reportPath).toString()), flag ? Number(count) : undefined);
     for (const failure of failures) console.error(failure);
     console.log(`POSH read evidence: ${checked} run(s) checked, ${failures.length} failure(s)`);
     process.exitCode = failures.length ? 1 : 0;

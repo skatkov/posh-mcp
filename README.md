@@ -219,55 +219,18 @@ assume a tool call's project override persists to the next call.
 
 ## Testing
 
-Run the deterministic tests with `npm ci && npm test`. They use a fake POSH
-executable and temporary projects, not your license or synced documentation.
-
-### Mutation testing
-
-With a current Node 22 release (22.18+) or Node 24.11+, run:
+Use Node 22.18+ or Node 24.11+:
 
 ```sh
+npm ci
+npm test
 npm run test:mutation
 ```
 
-StrykerJS mutates `shared/lookup-policy.mjs` and runs `test/plugin.test.mjs`
-and `test/lookup-policy.test.mjs` against each mutant. These cover direct parsing
-and classification results, the Claude/Codex subprocess adapters, and the
-OpenCode adapter. It uses the existing Node test runner; no test-framework
-migration is needed. It works in disposable copies, not the original source.
-The HTML report is `reports/mutation/index.html`; the machine-readable report is
-`reports/mutation/mutation.json`. Both reports and temporary sandboxes are ignored
-by Git.
-
-Local runs are opt-in. [Mutation CI](.github/workflows/mutation.yml) runs on pull
-requests and pushes to `main`, or manually through GitHub Actions. Separate Node
-26 jobs mutate the shared policy and both JavaScript adapters, and upload HTML
-and JSON reports as `mutation-policy` and `mutation-adapters` artifacts for seven
-days. Local runs and both CI jobs require a **100% mutation score**: Stryker exits
-nonzero below that threshold. This is not a line-coverage requirement. Known
-survivors must be addressed before mutation CI passes; the release workflow is
-unchanged.
-
-The command runner cannot select tests by coverage, so it reruns the entire
-plugin test file for every mutant, including
-the real timeout test. Expect a much slower run than `npm test`; four workers run
-by default. The runner allows 30 seconds of extra timeout headroom for subprocess
-contention. Review timeouts as well as survivors before trusting the score:
-Stryker counts timed-out mutants as detected, even if machine load caused them.
-Review survivors for missing behavioral assertions or equivalent mutations;
-prefer useful tests or safe simplification over blanket exclusions. No mutation
-types are excluded.
-
-For a focused run or to check the JavaScript adapters themselves:
-
-```sh
-npm run test:mutation -- --mutate shared/lookup-policy.mjs:161-196
-npm run test:mutation -- --mutate opencode/posh.mjs,hooks/posh-pre-tool-use.mjs
-```
-
-The `--mutate` argument replaces the default target. Mutation testing does not
-cover `hooks/posh-hook.sh` or prove compatibility with actual agent hosts; those
-still need shell behavior tests and live-host smoke tests.
+Tests use a fake POSH executable and temporary projects, not your license or synced
+documentation. Mutation testing requires a 100% score; its HTML report is
+`reports/mutation/index.html`. Runs are incremental: add `-- --force` after
+changing dependencies, configuration, fixtures, or shared test helpers.
 
 ## Releasing
 
