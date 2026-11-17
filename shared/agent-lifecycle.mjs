@@ -46,7 +46,7 @@ export function guidance(directory, mode = readMode()) {
       fs.accessSync(executable, fs.constants.X_OK);
       return fs.statSync(executable).isFile();
     } catch {
-      return false;
+      // Missing or inaccessible candidates do not stop the PATH search.
     }
   });
   if (!installed) text += '\n\nThe posh command is not on PATH in this session, so no local documentation is reachable. Tell the user once, in one line, and do not call POSH tools or posh commands.';
