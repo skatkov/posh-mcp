@@ -57,6 +57,7 @@ test('Copilot mode commands share state and preserve the transformed prompt', ()
   const command = (text, directory = cwd) => runCopilot('userPromptTransformed', directory, { prompt: text, transformedPrompt });
   const off = command('/posh off');
   assert.match(off.modifiedTransformedPrompt, /POSH is now off/);
+  assert.match(off.modifiedTransformedPrompt, /Confirm in one short line\.\n\nFor this prompt/);
   assert.ok(off.modifiedTransformedPrompt.endsWith(transformedPrompt));
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'off');
   assert.equal(runCopilot('sessionStart', cwd), null);
@@ -67,6 +68,7 @@ test('Copilot mode commands share state and preserve the transformed prompt', ()
   assert.ok(runHook('SessionStart', other).additionalContext.includes(FEEDBACK));
   const on = command('/posh');
   assert.match(on.modifiedTransformedPrompt, /Stop adding the POSH feedback section/);
+  assert.match(on.modifiedTransformedPrompt, /Confirm in one short line\.\n\n# POSH:/);
   assert.ok(!on.modifiedTransformedPrompt.includes(FEEDBACK));
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'on');
   assert.match(command('/posh auto', other).modifiedTransformedPrompt, /inactive in this non-Ruby directory \(auto mode\)/);
@@ -134,6 +136,8 @@ test('Copilot ignores ordinary tools, malformed payloads and unsafe session IDs'
     { toolName: 'edit', toolArgs: { path: `${gemDir('kamal', '2.12.0')}/lib/kamal.rb` } },
     { toolName: 'bash', toolArgs: { command: 'echo bundle show kamal' } },
     { toolName: 'bash', toolArgs: { command: 'bundle show kamal' }, sessionId: null },
+    { toolName: 'bash', toolArgs: { command: 'bundle show kamal' }, sessionId: 42 },
+    { toolName: 'bash', toolArgs: { command: 'bundle show kamal' }, sessionId: {} },
     { toolName: 'bash', toolArgs: { command: 'bundle show kamal' }, sessionId: '' },
     { toolName: 'bash', toolArgs: { command: 'bundle show kamal' }, sessionId: '../../escape' },
   ]) assert.equal(runCopilot('preToolUse', cwd, input), null);
@@ -192,8 +196,9 @@ test('Copilot parses decoded command whitespace and ignores nested prompt keys',
 test('Copilot rejects unusable lifecycle input before changing shared mode', () => {
   const cwd = project('Gemfile');
   for (const input of [
-    { cwd: 'relative' }, { cwd: path.join(cwd, 'missing') },
+    { cwd: path.relative(repo, cwd) }, { cwd: path.join(cwd, 'missing') },
     { cwd: path.join(cwd, 'Gemfile') }, { transformedPrompt: null },
+    { prompt: null }, { prompt: 42 }, { prompt: {} }, { cwd: 42 },
   ]) {
     assert.equal(runCopilot('userPromptTransformed', cwd, {
       prompt: '/posh off', transformedPrompt: 'original', ...input,
@@ -252,4 +257,38 @@ test('Copilot never reuses a previous project in forced-on or off mode', () => {
   assert.match(off, /POSH is off/);
   assert.match(off, /discard all earlier POSH project-path instructions/);
   assert.ok(!off.includes(JSON.stringify({ project: ruby })));
+});
+
+test('Copilot command aliases change mode, and only feedback mode adds the short feedback directive', () => {
+  const cwd = project('Gemfile');
+  for (const alias of ['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh']) {
+    const prompt = `${alias} feedback`;
+    const out = runCopilot('userPromptTransformed', cwd, { prompt, transformedPrompt: prompt });
+    assert.equal(fs.readFileSync(modeFile, 'utf8'), 'feedback\n');
+    assert.match(out.modifiedTransformedPrompt, /Include POSH feedback after meaningful POSH use\./);
+    const ordinary = runCopilot('userPromptTransformed', cwd, { prompt: 'continue', transformedPrompt: 'continue' });
+    assert.match(ordinary.modifiedTransformedPrompt, /Include POSH feedback after meaningful POSH use\./);
+    runHook('UserPromptSubmit', cwd, JSON.stringify({ prompt: '/posh on' }));
+    const on = runCopilot('userPromptTransformed', cwd, { prompt: 'continue', transformedPrompt: 'continue' });
+    assert.doesNotMatch(on.modifiedTransformedPrompt, /Include POSH feedback/);
+    assert.ok(on.modifiedTransformedPrompt.endsWith("Do not use the MCP server's default project.\n\ncontinue"));
+  }
+});
+
+test('Copilot trims leading command whitespace and groups repeated separators', () => {
+  const cwd = project('Gemfile');
+  for (const prompt of ['  /posh   off  ', '\t/posh\t\toff\n']) {
+    runHook('UserPromptSubmit', cwd, JSON.stringify({ prompt: '/posh on' }));
+    const out = runCopilot('userPromptTransformed', cwd, { prompt, transformedPrompt: prompt });
+    assert.match(out.modifiedTransformedPrompt, /POSH is now off/);
+    assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
+  }
+});
+
+test('Copilot ignores unsupported lifecycle event names', () => {
+  const out = execFileSync(process.execPath, [path.join(repo, 'hooks/posh-copilot-hook.mjs'), 'SessionEnd'], {
+    env: { ...process.env }, encoding: 'utf8',
+    input: JSON.stringify({ cwd: project('Gemfile') }),
+  });
+  assert.equal(out, '');
 });

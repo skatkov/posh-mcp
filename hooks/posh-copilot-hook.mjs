@@ -18,7 +18,7 @@ function projectContext(cwd) {
 }
 
 try {
-  const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+  const input = JSON.parse(fs.readFileSync(0));
   const event = process.argv[2];
   let output;
   if (event === 'PreToolUse') {
@@ -33,13 +33,13 @@ try {
     });
     if (reason) output = { permissionDecision: 'deny', permissionDecisionReason: reason };
   } else {
-    if (typeof input.cwd !== 'string' || !path.isAbsolute(input.cwd)) process.exit(0);
+    if (!path.isAbsolute(input.cwd)) process.exit(0);
     if (!fs.statSync(input.cwd).isDirectory()) process.exit(0);
     const cwd = fs.realpathSync(input.cwd);
     if (event === 'UserPromptSubmit' && typeof input.transformedPrompt !== 'string') process.exit(0);
     let context;
     if (event === 'UserPromptSubmit') {
-      const [command, mode = 'on'] = typeof input.prompt === 'string' ? input.prompt.trim().split(/\s+/) : [];
+      const [command, mode = 'on'] = input.prompt.trim().split(/\s+/);
       if (['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh'].includes(command)) {
         context = setMode(mode);
         if (context) context = [context, guidance(cwd)].filter(Boolean).join('\n\n');
