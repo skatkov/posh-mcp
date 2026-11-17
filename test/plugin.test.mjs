@@ -249,6 +249,35 @@ test('OpenCode adds the ruleset on model and compaction requests', async () => {
   assert.deepEqual(host.requested, [{ sessionID: 's' }, { sessionID: 's' }]);
 });
 
+test('OpenCode forced modes do not depend on session lookup', async () => {
+  const host = await setupOpenCode(project('.git'));
+  host.sessionError = true;
+  for (const mode of ['on', 'feedback', 'off']) {
+    await host.run(mode);
+    for (const kind of ['context', 'compaction']) {
+      const text = await host.system(kind);
+      if (mode === 'off') assert.equal(text, '');
+      else {
+        assert.ok(text.includes(MARKER));
+        assert.equal(text.includes(FEEDBACK), mode === 'feedback');
+      }
+    }
+  }
+  assert.deepEqual(host.requested, []);
+});
+
+test('OpenCode inactive guidance leaves existing context parts unchanged', async () => {
+  for (const mode of ['off', 'auto']) {
+    const host = await setupOpenCode(mode === 'off' ? project('Gemfile') : project('.git'));
+    await host.run(mode);
+    for (const kind of ['context', 'compaction']) {
+      const system = [{ type: 'text', text: 'Existing project instructions.' }];
+      await host.hooks[kind]({ sessionID: 's', system });
+      assert.deepEqual(system, [{ type: 'text', text: 'Existing project instructions.' }]);
+    }
+  }
+});
+
 test('OpenCode strips leading frontmatter with LF or CRLF but preserves body separators', async () => {
   const body = '# Guidance\n\n---\nbody: keep this\n---\n\nKeep the body.';
   const crlf = body.replaceAll('\n', '\r\n');
