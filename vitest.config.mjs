@@ -6,5 +6,12 @@ export default defineConfig({
     pool: 'forks',
     restoreMocks: true,
     testTimeout: 15000,
+    coverage: {
+      provider: 'v8',
+      include: ['shared/**/*.mjs', 'opencode/**/*.mjs', 'hooks/**/*.mjs', 'evals/**/*.mjs', 'scripts/**/*.mjs'],
+      autoAttachSubprocess: true,
+      reporter: ['text', 'html', 'json-summary'],
+      reportsDirectory: 'reports/coverage',
+    },
   },
 });
