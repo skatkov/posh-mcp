@@ -60,7 +60,8 @@ async function pluginFixture(skill) {
   fs.copyFileSync(path.join(repo, 'opencode/posh.mjs'), path.join(root, 'opencode/posh.mjs'));
   fs.writeFileSync(path.join(root, 'skills/posh/SKILL.md'), skill);
   fs.copyFileSync(path.join(repo, 'skills/posh/feedback.md'), path.join(root, 'skills/posh/feedback.md'));
-  for (const dir of ['shared', 'node_modules']) fs.symlinkSync(path.join(repo, dir), path.join(root, dir));
+  fs.cpSync(path.join(repo, 'shared'), path.join(root, 'shared'), { recursive: true });
+  fs.symlinkSync(path.join(repo, 'node_modules'), path.join(root, 'node_modules'));
   return (await import(path.join(root, 'opencode/posh.mjs'))).default;
 }
 
