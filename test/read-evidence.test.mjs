@@ -429,8 +429,10 @@ async function runCli(args, script = checker) {
   }
 }
 
-for (const script of [null, path.join(tmp, 'another-script.mjs')]) {
-  test(`importing the checker has no CLI side effects: ${script}`, async () => {
+for (const [label, script] of [
+  ['without an entry point', null], ['from another entry point', path.join(tmp, 'another-script.mjs')],
+]) {
+  test(`importing the checker has no CLI side effects ${label}`, async () => {
     const status = process.exitCode;
     assert.deepEqual(await runCli([], script), { status, stdout: [], stderr: [] });
   });
