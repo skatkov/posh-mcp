@@ -99,6 +99,10 @@ async function openCodeTool(host, cwd, tool, input, { session = 's', ...options 
   });
 }
 
+test('plugin fixtures put fake POSH before host executables', () => {
+  assert.equal(process.env.PATH.split(path.delimiter)[0], poshBin);
+});
+
 test('injects valid JSON with the ruleset and no frontmatter in a Ruby project', () => {
   const out = runHook('SessionStart', project('Gemfile.lock'));
   assert.equal(out.hookEventName, 'SessionStart');

@@ -62,6 +62,7 @@ printf '}'
 `,
     { mode: 0o755 },
   );
+  process.env.PATH = `${poshBin}${path.delimiter}${process.env.PATH || ''}`;
 });
 
 export const gemDir = (gem, version) => `/home/x/.local/share/mise/installs/ruby/4.0.9/lib/ruby/gems/4.0.0/gems/${gem}-${version}`;
