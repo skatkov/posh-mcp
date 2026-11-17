@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, test } from 'node:test';
+import { afterAll, test } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { expectedReads } from '../evals/check-evidence.mjs';
 import { parse } from 'yaml';
@@ -13,7 +13,7 @@ const evals = path.join(repo, 'evals');
 const names = fs.readdirSync(evals).filter((name) => fs.existsSync(path.join(evals, name, 'case.yaml')));
 const cases = names.map((name) => parse(fs.readFileSync(path.join(evals, name, 'case.yaml'), 'utf8')));
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'posh-evals-'));
-after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const real = path.join(tmp, 'real-home');
 const bin = path.join(tmp, 'bin');

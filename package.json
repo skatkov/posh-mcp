@@ -36,10 +36,12 @@
   "devDependencies": {
     "@opencode/plugin": "2.3.0",
     "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
+    "vitest": "5.1.0",
     "yaml": "2.9.1"
   },
   "scripts": {
-    "test": "node --test test/*.mjs",
+    "test": "vitest run",
     "test:mutation": "stryker run",
     "preversion": "git symbolic-ref --short HEAD | grep -qx main || { echo 'Release from main only.' >&2; exit 1; }; npm test",
     "version": "node scripts/sync-version.mjs",

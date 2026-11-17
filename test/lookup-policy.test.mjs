@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, beforeEach, test } from 'node:test';
-import { rubyProject, expandPath, lookupForPath, lookupForUrl, commandWords, commandOptions, commandOperands, lookupForCommand } from '../shared/lookup-policy.mjs';
+import { afterAll, afterEach, beforeEach, describe, test, vi } from 'vitest';
+import { rubyProject, expandPath, lookupForPath, lookupForUrl, commandWords, commandOptions, commandOperands, lookupForCommand, poshRedirect } from '../shared/lookup-policy.mjs';
 
 const cwd = '/project';
 const saved = { GEM_HOME: process.env.GEM_HOME, GEM_PATH: process.env.GEM_PATH };
@@ -11,16 +12,16 @@ beforeEach(() => {
   delete process.env.GEM_HOME;
   delete process.env.GEM_PATH;
 });
-after(() => {
+afterAll(() => {
   for (const [key, value] of Object.entries(saved)) {
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
   }
 });
 
-test('project discovery finds markers, stops at repositories, and excludes HOME and the filesystem root', (t) => {
+test('project discovery finds markers, stops at repositories, and excludes HOME and the filesystem root', ({ onTestFinished }) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'posh-project-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  onTestFinished(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.writeFileSync(path.join(root, '.git'), '');
   const nested = path.join(root, 'app/models');
   fs.mkdirSync(nested, { recursive: true });
@@ -35,7 +36,7 @@ test('project discovery finds markers, stops at repositories, and excludes HOME 
   fs.mkdirSync(inner);
   fs.writeFileSync(path.join(inner, '.git'), '');
   assert.equal(rubyProject(inner), null);
-  t.mock.method(os, 'homedir', () => root);
+  vi.spyOn(os, 'homedir').mockReturnValue(root);
   assert.equal(rubyProject(nested), null);
   assert.equal(rubyProject(path.parse(root).root), null);
 });
@@ -178,4 +179,71 @@ test('supported command flags and value options leave only source and URL operan
     'curl -sSL -o download https://rubygems.org/downloads/kamal-2.12.0.gem',
     'wget -q -O download https://rubygems.org/downloads/kamal-2.12.0.gem',
   ]) assert.equal(lookupForCommand(command, cwd), 'gem:kamal', command);
+});
+
+describe('redirect policy', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "posh-policy-team's-$HOME-"));
+  const bin = path.join(root, 'bin');
+  const input = { cwd: root, session_id: 'policy', tool_name: 'Bash', tool_input: { command: 'bundle show kamal' } };
+  const library = { ref: 'gem:kamal', version: '2.12.0', kinds: ['rdoc'] };
+  fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(root, 'Gemfile.lock'), '');
+  fs.writeFileSync(path.join(bin, 'posh'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$FAKE_POSH_CALLS"\nprintf "%s" "$FAKE_POSH_RESPONSE"\n', { mode: 0o755 });
+  afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+  afterEach(() => vi.unstubAllEnvs());
+  beforeEach(() => {
+    vi.stubEnv('XDG_CONFIG_HOME', path.join(root, 'config'));
+    vi.stubEnv('PATH', bin);
+    vi.stubEnv('PLUGIN_DATA', fs.mkdtempSync(path.join(root, 'data-')));
+    vi.stubEnv('FAKE_POSH_CALLS', path.join(root, 'calls'));
+    vi.stubEnv('FAKE_POSH_RESPONSE', JSON.stringify({ ok: true, project_path: root, data: [library] }));
+  });
+
+  test('named and gem-tree redirects keep distinct markers and project-pinned instructions', async () => {
+    for (const [tool_input, ref] of [[{ command: 'bundle show kamal' }, 'gem:kamal'], [{ command: 'grep pattern /app/vendor/bundle' }, null]]) {
+      const reason = await poshRedirect({ ...input, tool_input });
+      assert.deepEqual(fs.readFileSync(path.join(root, 'calls'), 'utf8').trim().split('\n'), [
+        'docsets', '--json', '--project', root, ...(ref ? ['--filter', ref] : []),
+      ]);
+      assert.match(reason, ref ? /gem:kamal 2\.12\.0, the version this project locks/ : /the installed source of the gems this project locks/);
+      assert.deepEqual(JSON.parse(reason.match(/search tool with (\{.*?\}), or/)[1]), {
+        query: '<symbol or page name>', project: root, ...(ref ? { ref } : {}),
+      });
+      assert.deepEqual(JSON.parse(reason.match(/ref using (\{.*?\})\./)[1]), {
+        ref: '<returned document ref>', project: root,
+      });
+      const cli = reason.match(/or `(.+?)`, then/)[1];
+      const args = execFileSync('/bin/sh', ['-c', `posh() { printf '%s\\n' "$@"; }\n${cli}`], { encoding: 'utf8' }).trim().split('\n');
+      assert.deepEqual(args, ['search', '<symbol>', ...(ref ? ['--ref', ref] : []), '--project', root]);
+      assert.match(reason, /retry the original call; it will go through/);
+      assert.equal(await poshRedirect({ ...input, tool_input }), null);
+    }
+    assert.deepEqual(fs.readdirSync(path.join(process.env.PLUGIN_DATA, 'nudged')).map((name) => name.split('.').at(-1)).sort(), [
+      'gem-tree', 'gem:kamal',
+    ]);
+  });
+
+  test('a search without a path classifies the current gem directory', async () => {
+    const cwd = path.join(root, 'vendor/bundle/ruby/3.4.0/gems/kamal-2.12.0');
+    fs.mkdirSync(cwd, { recursive: true });
+    assert.match(await poshRedirect({ ...input, cwd, tool_name: 'Grep', tool_input: { pattern: 'perform' } }), /gem:kamal/);
+  });
+
+  test('malformed and unrelated rows cannot hide a later matching docset', async () => {
+    vi.stubEnv('FAKE_POSH_RESPONSE', JSON.stringify({
+      ok: true, project_path: root,
+      data: [null, {}, { ref: 17 }, { ref: 'lang:ruby', kinds: ['rdoc'] },
+        { ref: 'gem:other', kinds: ['rdoc'] }, { ref: 'gem:kamal', kinds: 'rdoc' },
+        { ref: 'gem:kamal', kinds: [] }, library],
+    }));
+    assert.match(await poshRedirect(input), /gem:kamal 2\.12\.0/);
+  });
+
+  test('an unfiltered discovery without any documented gem leaves no marker', async () => {
+    vi.stubEnv('FAKE_POSH_RESPONSE', JSON.stringify({
+      ok: true, project_path: root, data: [{ ref: 'lang:ruby', kinds: ['rdoc'] }],
+    }));
+    assert.equal(await poshRedirect({ ...input, tool_input: { command: 'grep pattern /app/vendor/bundle' } }), null);
+    assert.deepEqual(fs.readdirSync(process.env.PLUGIN_DATA), []);
+  });
 });

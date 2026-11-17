@@ -1,12 +1,12 @@
 // Runs the Claude/Codex hook and the OpenCode plugin against the same scenarios.
-// node --test isolates each file in its own process, so setting XDG_CONFIG_HOME is safe.
+// Vitest's forks pool isolates this file's environment from the other suites.
 
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, before, beforeEach, test } from 'node:test';
+import { afterAll, beforeAll, beforeEach, test, vi } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { Error as ToolError } from '@opencode/plugin/promise/tool';
 import { poshRedirect } from '../shared/lookup-policy.mjs';
@@ -14,7 +14,7 @@ import { poshRedirect } from '../shared/lookup-policy.mjs';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const hook = path.join(repo, 'hooks/posh-hook.sh');
 const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'posh-plugin-')));
-after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 process.env.XDG_CONFIG_HOME = path.join(tmp, 'config');
 const modeFile = path.join(tmp, 'config/posh/agent-mode');
 const MARKER = "POSH: docs for this project's exact versions";
@@ -42,7 +42,7 @@ const DOCSETS = {
   'gem:geneva_drive_admin': { version: '0.6.0', kinds: [] },
 };
 const poshBin = path.join(tmp, 'bin');
-before(() => {
+beforeAll(() => {
   fs.mkdirSync(poshBin, { recursive: true });
   const cases = Object.entries(DOCSETS)
     .map(([ref, spec]) => `  *'--filter ${ref}') printf '%s' '${JSON.stringify([{ ref, ...spec }])}' ;;`)
@@ -84,7 +84,7 @@ const gemDir = (gem, version) => `/home/x/.local/share/mise/installs/ruby/4.0.9/
 const prompt = (text) => JSON.stringify({ session_id: 'x', cwd: '/x', hook_event_name: 'UserPromptSubmit', prompt: text });
 
 let plugin;
-before(async () => {
+beforeAll(async () => {
   plugin = (await import(path.join(repo, 'opencode/posh.mjs'))).default;
 });
 beforeEach(() => fs.rmSync(modeFile, { force: true }));
@@ -1074,11 +1074,11 @@ test('accepts formatted JSON but rejects the wrong library, project, and Ruby-on
   assert.equal(call([{ ref: 'lang:ruby', kinds: ['rdoc'] }], dir, { command: 'grep registry /app/vendor/bundle' }), null);
 });
 
-test('POSH project paths are type-checked before filesystem resolution', async (t) => {
+test('POSH project paths are type-checked before filesystem resolution', async () => {
   const cwd = project('Gemfile.lock');
   const realpath = fs.realpathSync;
   const resolved = [];
-  t.mock.method(fs, 'realpathSync', (file, ...args) => {
+  vi.spyOn(fs, 'realpathSync').mockImplementation((file, ...args) => {
     resolved.push(file);
     return realpath(file, ...args);
   });

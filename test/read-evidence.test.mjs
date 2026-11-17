@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { after, test } from 'node:test';
+import { afterAll, test } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { checkReport, expectedReads, inspectTrace } from '../evals/check-evidence.mjs';
 
@@ -30,7 +30,7 @@ const result = (id, ref, ok = true) => ({
 });
 const trace = (...events) => [init, ...events].map((event) => JSON.stringify(event)).join('\n');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'posh-evidence-'));
-after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 const checker = fileURLToPath(new URL('../evals/check-evidence.mjs', import.meta.url));
 
 for (const [name, ref] of Object.entries(expectedReads).filter(([, ref]) => ref)) {

@@ -221,6 +221,8 @@ assume a tool call's project override persists to the next call.
 
 Run the deterministic tests with `npm ci && npm test`. They use a fake POSH
 executable and temporary projects, not your license or synced documentation.
+Vitest runs each test file in an isolated fork and restores spies between tests;
+assertions continue to use `node:assert/strict`.
 
 ### Mutation testing
 
@@ -230,11 +232,13 @@ With a current Node 22 release (22.18+) or Node 24.11+, run:
 npm run test:mutation
 ```
 
-StrykerJS mutates `shared/lookup-policy.mjs` and runs `test/plugin.test.mjs`
-and `test/lookup-policy.test.mjs` against each mutant. These cover direct parsing
-and classification results, the Claude/Codex subprocess adapters, and the
-OpenCode adapter. It uses the existing Node test runner; no test-framework
-migration is needed. It works in disposable copies, not the original source.
+StrykerJS mutates `shared/lookup-policy.mjs` and uses its Vitest runner to select
+tests by per-test mutation coverage. Tests cover direct parsing and classification,
+the Claude/Codex subprocess adapters, and the OpenCode adapter.
+`test/hook-adapter.test.mjs` also imports the JavaScript hook directly: coverage
+from subprocesses is not reported to Stryker. Related-file filtering is disabled
+because some tests load source dynamically or through subprocesses.
+Stryker works in disposable copies, not the original source.
 The HTML report is `reports/mutation/index.html`; the machine-readable report is
 `reports/mutation/mutation.json`. Both reports and temporary sandboxes are ignored
 by Git.
@@ -243,14 +247,28 @@ Local runs are opt-in. [Mutation CI](.github/workflows/mutation.yml) runs on pul
 requests and pushes to `main`, or manually through GitHub Actions. Separate Node
 26 jobs mutate the shared policy and both JavaScript adapters, and upload HTML
 and JSON reports as `mutation-policy` and `mutation-adapters` artifacts for seven
-days. Local runs and both CI jobs require a **100% mutation score**: Stryker exits
-nonzero below that threshold. This is not a line-coverage requirement. Known
+days. Incremental results are cached separately for each target. Dependency,
+Node version, configuration, fixture, shell-hook, ruleset, and non-mutated
+JavaScript changes invalidate that target's cache; Stryker tracks changes to
+mutated files and tests.
+Manual workflow runs force every mutant to rerun. Local runs and both CI jobs
+require a **100% mutation score**: Stryker exits nonzero below that threshold.
+This is not a line-coverage requirement. Known
 survivors must be addressed before mutation CI passes; the release workflow is
 unchanged.
 
-The command runner cannot select tests by coverage, so it reruns the entire
-plugin test file for every mutant, including
-the real timeout test. Expect a much slower run than `npm test`; four workers run
+Incremental mode is enabled by default and saves results in
+`reports/mutation/stryker-incremental.json`. Unchanged mutants reuse their results
+when their covering tests are unchanged; a baseline test run is still required.
+After changing dependencies, configuration, fixtures, shared test setup/helpers,
+or other files outside the mutated source and test files, force a fresh local run.
+Use a manual workflow run for the same check in CI:
+
+```sh
+npm run test:mutation -- --force
+```
+
+Expect a cold mutation run to be slower than `npm test`; four workers run
 by default. The runner allows 30 seconds of extra timeout headroom for subprocess
 contention. Review timeouts as well as survivors before trusting the score:
 Stryker counts timed-out mutants as detected, even if machine load caused them.
