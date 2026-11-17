@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { repo, tmp, modeFile, project } from './support/plugin-fixture.mjs';
 
 const { guidance, readMode, ruleset, setMode } = await import('../shared/agent-lifecycle.mjs');
@@ -33,9 +33,9 @@ test('ruleset loading strips only leading frontmatter and trims the body', async
   ]) assert.equal((await isolatedLifecycle(skill)).ruleset, expected);
 });
 
-test('mode state uses HOME when XDG_CONFIG_HOME is absent', async (t) => {
+test('mode state uses HOME when XDG_CONFIG_HOME is absent', async ({ onTestFinished }) => {
   const previous = { HOME: process.env.HOME, XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME };
-  t.after(() => {
+  onTestFinished(() => {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -96,9 +96,9 @@ test('failed mode writes throw instead of confirming an unpersisted mode', () =>
   fs.rmdirSync(modeFile);
 });
 
-test('guidance honors explicit modes, current persisted mode, and Ruby project discovery', (t) => {
+test('guidance honors explicit modes, current persisted mode, and Ruby project discovery', ({ onTestFinished }) => {
   const previous = process.env.PATH;
-  t.after(() => { process.env.PATH = previous; });
+  onTestFinished(() => { process.env.PATH = previous; });
   const bin = project();
   fs.writeFileSync(path.join(bin, 'posh'), '', { mode: 0o755 });
   process.env.PATH = bin;
@@ -117,9 +117,9 @@ test('guidance honors explicit modes, current persisted mode, and Ruby project d
   assert.equal(guidance('/not/a/project', 'feedback'), ruleset + '\n\n' + feedback);
 });
 
-test('PATH discovery rejects missing, non-executable and directory entries, then checks later entries', (t) => {
+test('PATH discovery rejects missing, non-executable and directory entries, then checks later entries', ({ onTestFinished }) => {
   const previous = process.env.PATH;
-  t.after(() => { process.env.PATH = previous; });
+  onTestFinished(() => { process.env.PATH = previous; });
   const bin = project();
   process.env.PATH = bin;
   assert.equal(guidance(null, 'on'), ruleset + missing);
@@ -135,10 +135,10 @@ test('PATH discovery rejects missing, non-executable and directory entries, then
   assert.equal(guidance(null, 'feedback'), ruleset + '\n\n' + feedback);
 });
 
-test('an absent PATH uses the current directory and missing-POSH feedback retains both messages', (t) => {
+test('an absent PATH uses the current directory and missing-POSH feedback retains both messages', ({ onTestFinished }) => {
   const previous = process.env.PATH;
   const cwd = process.cwd();
-  t.after(() => {
+  onTestFinished(() => {
     process.chdir(cwd);
     if (previous === undefined) delete process.env.PATH;
     else process.env.PATH = previous;

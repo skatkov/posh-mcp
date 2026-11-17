@@ -2,14 +2,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { after, before, beforeEach } from 'node:test';
+import { afterAll, beforeAll, beforeEach } from 'vitest';
 import { fileURLToPath } from 'node:url';
 
-// node --test isolates each test file, including this fixture's environment and state.
+// Vitest's forks pool isolates each test file's environment and state.
 export const repo = fileURLToPath(new URL('../../', import.meta.url));
 export const hook = path.join(repo, 'hooks/posh-hook.sh');
 export const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'posh-plugin-')));
-after(() => fs.rmSync(tmp, { recursive: true, force: true }));
+afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 process.env.XDG_CONFIG_HOME = path.join(tmp, 'config');
 export const modeFile = path.join(tmp, 'config/posh/agent-mode');
 beforeEach(() => fs.rmSync(modeFile, { force: true }));
@@ -38,7 +38,7 @@ const DOCSETS = {
   'gem:geneva_drive_admin': { version: '0.6.0', kinds: [] },
 };
 export const poshBin = path.join(tmp, 'bin');
-before(() => {
+beforeAll(() => {
   fs.mkdirSync(poshBin, { recursive: true });
   const cases = Object.entries(DOCSETS)
     .map(([ref, spec]) => `  *'--filter ${ref}') printf '%s' '${JSON.stringify([{ ref, ...spec }])}' ;;`)
