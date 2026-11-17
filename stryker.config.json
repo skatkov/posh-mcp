@@ -1,6 +1,11 @@
 {
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
-  "mutate": ["shared/lookup-policy.mjs", "evals/check-evidence.mjs"],
+  "mutate": [
+    "shared/lookup-policy.mjs",
+    "opencode/posh.mjs",
+    "hooks/posh-pre-tool-use.mjs",
+    "evals/check-evidence.mjs"
+  ],
   "ignorePatterns": ["/reports/**"],
   "testRunner": "vitest",
   "vitest": {
