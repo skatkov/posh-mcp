@@ -2,8 +2,10 @@
   "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
   "mutate": [
     "shared/lookup-policy.mjs",
+    "shared/agent-lifecycle.mjs",
     "opencode/posh.mjs",
     "hooks/posh-pre-tool-use.mjs",
+    "hooks/posh-copilot-hook.mjs",
     "evals/check-evidence.mjs"
   ],
   "ignorePatterns": ["/reports/**"],

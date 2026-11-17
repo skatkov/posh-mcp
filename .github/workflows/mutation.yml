@@ -31,6 +31,12 @@ jobs:
           - target: evidence
             files: evals/check-evidence.mjs
             dependencies: evals/expected-reads.json
+          - target: lifecycle
+            files: shared/agent-lifecycle.mjs
+            dependencies: shared/lookup-policy.mjs
+          - target: copilot
+            files: hooks/posh-copilot-hook.mjs
+            dependencies: shared/lookup-policy.mjs
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -47,7 +53,7 @@ jobs:
       - name: Restore incremental results
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         env:
-          CACHE_PREFIX: mutation-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ matrix.target }}-${{ hashFiles('package.json', 'package-lock.json', 'stryker.config.json', 'vitest.config.mjs', '.github/workflows/mutation.yml', 'hooks/**', 'skills/**', 'evals/**/*.json', 'evals/**/*.sh', 'evals/**/*.yaml', 'test/fixtures/**', '**/plugin.json', 'gemini-extension.json', matrix.dependencies) }}
+          CACHE_PREFIX: mutation-${{ runner.os }}-${{ steps.node.outputs.node-version }}-${{ matrix.target }}-${{ hashFiles('package.json', 'package-lock.json', 'stryker.config.json', 'vitest.config.mjs', '.github/workflows/mutation.yml', 'hooks/**', 'skills/**', 'shared/agent-lifecycle.mjs', 'evals/**/*.json', 'evals/**/*.sh', 'evals/**/*.yaml', 'test/fixtures/**', 'test/support/**', '**/plugin.json', 'gemini-extension.json', matrix.dependencies) }}
         with:
           path: reports/mutation/stryker-incremental.json
           key: ${{ env.CACHE_PREFIX }}-${{ github.run_id }}-${{ github.run_attempt }}
