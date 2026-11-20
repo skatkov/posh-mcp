@@ -8,7 +8,54 @@ The cases are synthetic reproductions of patterns reported in a local transcript
 installed gem reads, GitHub documentation fetches, undocumented gems, and unrelated work.
 They are not a representative sample of all Ruby tasks.
 
-## Running
+## Running on Codex
+
+After `npm ci`, run one pair on the redirect and typo cases with a model available to
+your account:
+
+```sh
+node evals/run-codex.mjs --model gpt-6.2-sol \
+  --case hook-redirect --case typo-control --runs 1
+```
+
+Omit `--case` to run all six cases or `--runs` to use each case's YAML default
+(currently three runs per arm). `--judge-model MODEL` pins a separate quality judge
+if desired. A full run at the defaults makes 36 task runs and 30 grading calls.
+Task and judge calls both consume Codex account usage.
+
+The runner was verified with Codex CLI 0.171.0. It requires the CLI with
+`codex plugin add`, `codex exec --json` and `--dangerously-bypass-hook-trust`, a
+file-backed Codex login or an API key in the environment, Node 22.18+, and the POSH
+docsets listed below. It installs the **current checkout** into a temporary local
+marketplace for the with arm. Both arms get identical fixture copies, the same
+model and cached web search, separate Codex homes, and a fresh session per run.
+Both can see the locally installed POSH CLI and docsets. The with arm also loads
+the plugin's MCP server, skill, and hooks. The runner trusts only the enabled hooks
+for those invocations, so run it from a checkout whose hook code you trust. The
+isolated homes use the local POSH stores via the same symlinks as the Claude fixtures.
+
+The report and JSONL transcripts are retained under `evals/results/codex-*/`.
+The report records answer quality, elapsed task time and task token usage in both
+arms. It records plugin checks alongside those scores:
+
+- Documentation cases require a successful plugin MCP read of the expected ref in
+  the with arm. The quality judge receives only the prompt, YAML criteria and
+  candidate answer.
+- `hook-redirect` asks for a standalone `cat` in both arms to exercise Codex's Bash
+  hook. It requires a native POSH denial in the session transcript before the
+  expected read completes.
+- `undocumented-gem` checks that the agent could read the local gem source.
+  `typo-control` checks the actual file change and zero observed POSH lookups.
+- `github-source` records hosted web search item counts. Codex's hosted web search
+  sits outside local tool hooks, and the trace does not establish which upstream
+  URLs it fetched.
+
+An execution error or failed plugin/control check sets a nonzero exit status.
+Answer quality is scored separately for the comparison. The report includes the
+expected run count so interrupted comparisons are visible. Session logs contain
+prompts, tool results, and local paths. Keep them local when sharing a summary.
+
+## Running on Claude Code
 
 ```sh
 claude plugin eval . \
@@ -150,10 +197,8 @@ and verify denial, retry and unsupported-`ask` handling. Isolated-PATH checks
 verify that hooks need Node/POSH but not Ruby. Gem-path regressions cover exported
 custom homes and standard user, XDG, system and alternate-Ruby layouts.
 
-The live eval suite and retained JSONL checker target Claude Code, not Codex or
-OpenCode. The scaffolds and redirect/retry behavior have been smoke-tested against
-real POSH on Linux, but no live-agent runs have verified the new Codex/OpenCode
-adapters yet.
+Codex has its own live runner and transcript checks. The Claude JSONL checker
+continues to consume Claude reports. OpenCode is covered by contract tests.
 
 The latest full comparisons were interrupted, so there is no completed with/without
 baseline for this version. Older reports under ignored `results/` predate the JSONL

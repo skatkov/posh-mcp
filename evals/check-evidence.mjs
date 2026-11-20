@@ -6,7 +6,7 @@ export const expectedReads = JSON.parse(fs.readFileSync(new URL('./expected-read
 
 const normalizeRef = (ref) => typeof ref === 'string' ? ref.replace(/^posh:\/\//, '') : null;
 
-function matchesDocument(actual, expected) {
+export function matchesDocument(actual, expected) {
   const ref = normalizeRef(actual);
   if (!ref) return false;
   const [page, section] = ref.split('#');
