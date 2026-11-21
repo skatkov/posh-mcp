@@ -19,6 +19,13 @@ or schemas. In code execution, filter by name and print only matching names
 when checking availability. If MCP is unavailable, use `posh docsets`,
 `posh search QUERY --ref REF`, and `posh read REF`.
 
+For a fully qualified symbol such as `ActiveRecord::Relation#update_all`, batch
+`search` then `read` in one Codex execution. Check the search result's
+`structuredContent`: if `ok` is true and `data.has_more` is false, find entries
+in `data.results` with `name === query`. If there is exactly one and it has a
+ref, read it in the same execution. Use the same `project` for both calls.
+Otherwise return the search results or error and continue the normal lookup.
+
 Search by symbol (e.g. `has_many`) or page name. Use the library ref from
 `docsets` or a POSH redirect. Read a returned ref, using `outline` only when you
 need a narrower section and `list` when you need to browse. Give an absolute
