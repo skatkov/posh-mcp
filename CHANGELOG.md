@@ -2,7 +2,9 @@
 
 ## Unreleased
 
-- Enable POSH in all projects by default. To keep guidance limited to Ruby projects, update every installed POSH agent plugin, then choose `auto` again. Older plugins delete the shared setting when you choose `auto`; newer plugins interpret a missing setting as `on`.
+- Enable POSH guidance in all projects by default and remove `auto` mode. Old
+  `auto` settings now behave like `on`. Use `off` to disable guidance; lookup
+  redirects still require a Ruby project.
 
 ## 1.2.2 — 2026-11-16
 

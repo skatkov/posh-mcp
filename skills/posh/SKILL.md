@@ -3,7 +3,7 @@ name: posh
 description: >
   Check version-matched Ruby, Rails, and gem docs before coding, reviewing,
   debugging, or explaining behavior. Use when asked for POSH or Ruby docs.
-argument-hint: "[on|off|auto|feedback]"
+argument-hint: "[on|off|feedback]"
 ---
 
 # POSH: docs for this project's exact versions
@@ -45,4 +45,4 @@ still lacks the docs, use matching official sources and say so. For activation,
 point the user to `posh activate <posh_key>` locally and leave the key with them.
 
 POSH is enabled everywhere by default. `/posh` turns it on, `/posh off` suspends
-this guidance, `/posh auto` limits it to Ruby projects, and `/posh feedback` adds feedback.
+this guidance, and `/posh feedback` adds feedback.

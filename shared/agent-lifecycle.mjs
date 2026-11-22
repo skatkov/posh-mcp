@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rubyProject } from './lookup-policy.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const modeFile = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'posh/agent-mode');
@@ -13,7 +12,7 @@ const feedback = fs.readFileSync(path.join(root, 'skills/posh/feedback.md'), 'ut
 export function readMode() {
   try {
     const mode = fs.readFileSync(modeFile, 'utf8').trim();
-    return ['on', 'off', 'auto', 'feedback'].includes(mode) ? mode : 'on';
+    return mode === 'off' || mode === 'feedback' ? mode : 'on';
   } catch {
     return 'on';
   }
@@ -23,19 +22,19 @@ export function setMode(mode) {
   const replies = {
     on: 'POSH is now on for every project.',
     off: 'POSH is now off. Stop following earlier POSH instructions until the user turns it back on.',
-    auto: 'POSH is now on for Ruby projects only.',
     feedback: 'POSH feedback mode is now on for every project.',
   };
   if (!Object.hasOwn(replies, mode)) return null;
-  const stopFeedback = readMode() === 'feedback' && ['on', 'auto'].includes(mode)
+  const stopFeedback = mode === 'on' && readMode() === 'feedback'
     ? ' Stop adding the POSH feedback section.' : '';
   fs.mkdirSync(path.dirname(modeFile), { recursive: true });
   fs.writeFileSync(modeFile, mode + '\n');
   return replies[mode] + stopFeedback + ' Confirm in one short line.';
 }
 
-export function guidance(directory, mode = readMode()) {
-  if (mode === 'off' || (mode === 'auto' && !rubyProject(directory))) return '';
+export function guidance() {
+  const mode = readMode();
+  if (mode === 'off') return '';
   let text = ruleset;
   const installed = (process.env.PATH || '').split(path.delimiter).some((directory) => {
     try {

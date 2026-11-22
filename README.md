@@ -125,14 +125,11 @@ current-project directive, not another copy of the full ruleset.
 | Command | Effect |
 | --- | --- |
 | `/posh` or `/posh on` | Default. Active in every project, including when the Ruby app sits in a subdirectory |
-| `/posh auto` | Active when the project has a `Gemfile`, `Gemfile.lock`, `gems.rb`, or `*.gemspec`, in the working directory or above it, up to the Git root |
 | `/posh feedback` | Same as `/posh on`, and the agent ends replies that used POSH with a **POSH feedback** section. The feedback stays in the reply; nothing is sent anywhere |
 | `/posh off` | Inactive everywhere |
 
 In Codex, use `$posh` in place of `/posh`. An explicit mode choice is saved in
-`~/.config/posh/agent-mode` and shared by all four agents. Update every installed
-POSH plugin before choosing `auto` again: choosing it in an older plugin deletes
-the shared setting, and newer plugins default to `on`. Copilot uses its
+`~/.config/posh/agent-mode` and shared by all four agents. Copilot uses its
 `userPromptTransformed` hook to apply mode changes and supply the confirmation
 instructions without replacing the user's original prompt. These plugins are
 not a claim that Anthropic, OpenAI, OpenCode, or GitHub has reviewed or listed them.
@@ -172,8 +169,8 @@ text, and atomic retry markers. The adapters only translate their host contracts
   only preserves fail-open process behavior; lifecycle responses are serialized once.
   Every transformed prompt refreshes the resolved Ruby project and supersedes
   earlier project paths because Copilot starts plugin MCP servers in the plugin
-  directory by default. Leaving Ruby in auto mode revokes the earlier guidance;
-  forced-on mode without a resolved project asks the agent to locate one explicitly.
+  directory by default. Without a resolved project, Copilot asks the agent to
+  locate the intended Ruby project explicitly instead of reusing an earlier path.
   It emits a native denial for redirects. Its shell launcher exits successfully
   even if Node fails, because Copilot otherwise denies calls on hook crashes.
 

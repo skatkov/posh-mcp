@@ -1,12 +1,12 @@
 // POSH plugin for OpenCode 2: adds the POSH ruleset to the system prompt of every
-// model request, registers the MCP server, and provides /posh [on|off|auto|feedback].
+// model request, registers the MCP server, and provides /posh [on|off|feedback].
 // Node hosts share lifecycle operations; the legacy shell hook remains standalone.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { Error as ToolError } from '@opencode/plugin/promise/tool';
 import { poshRedirect } from '../shared/lookup-policy.mjs';
-import { guidance, readMode, ruleset, setMode } from '../shared/agent-lifecycle.mjs';
+import { guidance, ruleset, setMode } from '../shared/agent-lifecycle.mjs';
 
 const withoutMentions = (items) => items?.map(({ mention, ...item }) => item);
 
@@ -27,7 +27,7 @@ export default {
     await ctx.command.transform((editor) => {
       editor.add({
         name: 'posh',
-        description: 'Check docs for this project\'s versions first (on, off, auto, feedback)',
+        description: 'Check docs for this project\'s versions first (on, off, feedback)',
         execute: async ({ sessionID, prompt, delivery }) => {
           const arg = (prompt.text || '').trim();
           const mode = arg === '' ? 'on' : arg;
@@ -47,14 +47,8 @@ export default {
 
     // Compaction is a separate request kind and would otherwise lose the ruleset.
     const addRuleset = async (event) => {
-      try {
-        const mode = readMode();
-        const directory = mode === 'auto' ? await sessionDirectory(event.sessionID) : null;
-        const text = guidance(directory, mode);
-        if (text) event.system.push({ type: 'text', text });
-      } catch {
-        // An unavailable session must not interrupt a model request.
-      }
+      const text = guidance();
+      if (text) event.system.push({ type: 'text', text });
     };
     await ctx.session.hook('context', addRuleset);
     await ctx.session.hook('compaction', addRuleset);
