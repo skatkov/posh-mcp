@@ -7,10 +7,12 @@ root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 mode_file=${XDG_CONFIG_HOME:-$HOME/.config}/posh/agent-mode
 
 mode() {
-  case $(cat "$mode_file" 2>/dev/null) in
-    auto) echo auto ;;
-    off) echo off ;;
-    feedback) echo feedback ;;
+  saved=$(LC_ALL=C awk '
+    { text = text (NR > 1 ? "\n" : "") $0 }
+    END { sub(/^[[:space:]]+/, "", text); sub(/[[:space:]]+$/, "", text); print text }
+  ' "$mode_file" 2>/dev/null)
+  case $saved in
+    auto | off | feedback) printf '%s\n' "$saved" ;;
     *) echo on ;;
   esac
 }
@@ -70,30 +72,36 @@ handle_command() {
     /posh | /posh:posh | \$posh | \$posh:posh | @posh) ;;
     *) return 0 ;;
   esac
+  requested=${2:-on}
+  case $requested in
+    on | off | auto | feedback) ;;
+    *) return 0 ;;
+  esac
 
   # Earlier feedback instructions stay in the transcript, so they must be revoked.
   stop_feedback=
   [ "$(mode)" = feedback ] && stop_feedback=' Stop adding the POSH feedback section.'
 
-  case ${2:-on} in
+  if ! set_mode "$requested"; then
+    emit "Could not save the POSH mode. Tell the user the save failed; do not confirm a mode change."
+    return 0
+  fi
+
+  case $requested in
     on)
-      set_mode on
       emit "POSH is now on for every project.$stop_feedback Confirm in one short line.
 
 $(ruleset)"
       ;;
     feedback)
-      set_mode feedback
       emit "POSH feedback mode is now on for every project. Confirm in one short line.
 
 $(ruleset)"
       ;;
     off)
-      set_mode off
       emit "POSH is now off. Stop following earlier POSH instructions until the user turns it back on. Confirm in one short line."
       ;;
     auto)
-      set_mode auto
       if ruby_project; then
         emit "POSH is now on for Ruby projects only, which includes this one.$stop_feedback Confirm in one short line.
 
