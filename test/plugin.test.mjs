@@ -150,7 +150,12 @@ test('hook commands switch modes and the OpenCode plugin honours the same file',
   assert.equal(runHook('SessionStart', ruby), null);
   const hostOnRuby = await setupOpenCode(ruby);
   assert.equal(await hostOnRuby.system(), '');
-  assert.equal(runHook('UserPromptSubmit', other, prompt('/posh auto')), null);
+  const retired = runHook('UserPromptSubmit', other, prompt('/posh auto')).additionalContext;
+  assert.match(retired, /auto mode was removed/);
+  assert.ok(!retired.includes(MARKER));
+  await hostOnOther.run('auto');
+  assert.match(hostOnOther.sent.at(-1).text, /auto mode was removed/);
+  assert.ok(!hostOnOther.sent.at(-1).text.includes(MARKER));
   assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
 
   const on = runHook('UserPromptSubmit', other, prompt('$posh:posh'));

@@ -34,6 +34,9 @@ function saveMode(mode) {
 }
 
 export function setMode(mode) {
+  if (mode === 'auto') {
+    return { text: 'POSH auto mode was removed. Tell the user to choose on or off; no mode was changed.' };
+  }
   const replies = {
     on: 'POSH is now on for every project.',
     off: 'POSH is now off. Stop following earlier POSH instructions until the user turns it back on.',
