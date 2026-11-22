@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'vitest';
-import { repo, tmp, modeFile, project } from './support/plugin-fixture.mjs';
+import { repo, tmp, modeFile, project, runHook, prompt, FEEDBACK } from './support/plugin-fixture.mjs';
 
 const { guidance, readMode, ruleset, setMode } = await import('../shared/agent-lifecycle.mjs');
 const missing = '\n\nThe posh command is not on PATH in this session, so no local documentation is reachable. Tell the user once, in one line, and do not call POSH tools or posh commands.';
@@ -53,15 +53,21 @@ test('mode state uses HOME when XDG_CONFIG_HOME is absent', async ({ onTestFinis
   assert.equal(fs.readFileSync(mode, 'utf8'), 'on\n');
 });
 
-test('mode discovery defaults to on and accepts only trimmed, known modes', () => {
-  assert.equal(readMode(), 'on');
+test('shell and Node agree on default, trimmed, and unknown saved modes', () => {
+  const ruby = project('Gemfile');
+  const other = project('.git');
   fs.mkdirSync(path.dirname(modeFile), { recursive: true });
   for (const [value, expected] of [
-    ['on', 'on'], ['off', 'off'], ['feedback', 'feedback'],
+    [null, 'on'], ['on', 'on'], ['off\r\n', 'off'], ['feedback', 'feedback'],
     [' \tfeedback\r\n', 'feedback'], ['auto', 'auto'], ['', 'on'], ['unknown', 'on'],
+    ['\n auto \n', 'auto'], ['off\nauto\n', 'on'],
   ]) {
-    fs.writeFileSync(modeFile, value);
+    if (value !== null) fs.writeFileSync(modeFile, value);
     assert.equal(readMode(), expected, value);
+    const rubyContext = runHook('SessionStart', ruby)?.additionalContext;
+    assert.equal(Boolean(rubyContext), expected !== 'off', value);
+    assert.equal(Boolean(rubyContext?.includes(FEEDBACK)), expected === 'feedback', value);
+    assert.equal(Boolean(runHook('SessionStart', other)), ['on', 'feedback'].includes(expected), value);
   }
 });
 
@@ -94,6 +100,15 @@ test('failed mode writes throw instead of confirming an unpersisted mode', () =>
   fs.mkdirSync(modeFile, { recursive: true });
   assert.throws(() => setMode('off'));
   fs.rmdirSync(modeFile);
+});
+
+test('shell reports a failed auto save instead of confirming the change', () => {
+  const cwd = project('.git');
+  const env = { XDG_CONFIG_HOME: project('posh') };
+  const result = runHook('UserPromptSubmit', cwd, prompt('/posh auto'), env);
+  assert.match(result.additionalContext, /Could not save the POSH mode/);
+  assert.doesNotMatch(result.additionalContext, /POSH is now/);
+  assert.ok(runHook('SessionStart', cwd, '', env));
 });
 
 test('guidance honors explicit modes, current persisted mode, and Ruby project discovery', ({ onTestFinished }) => {

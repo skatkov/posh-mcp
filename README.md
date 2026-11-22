@@ -130,7 +130,9 @@ current-project directive, not another copy of the full ruleset.
 | `/posh off` | Inactive everywhere |
 
 In Codex, use `$posh` in place of `/posh`. An explicit mode choice is saved in
-`~/.config/posh/agent-mode` and shared by all four agents. Copilot uses its
+`~/.config/posh/agent-mode` and shared by all four agents. Update every installed
+POSH plugin before choosing `auto` again: choosing it in an older plugin deletes
+the shared setting, and newer plugins default to `on`. Copilot uses its
 `userPromptTransformed` hook to apply mode changes and supply the confirmation
 instructions without replacing the user's original prompt. These plugins are
 not a claim that Anthropic, OpenAI, OpenCode, or GitHub has reviewed or listed them.
