@@ -37,10 +37,12 @@ try {
     const cwd = fs.realpathSync(input.cwd);
     const isPrompt = event === 'UserPromptSubmit';
     if (!isPrompt && event !== 'SessionStart' && event !== 'SubagentStart') process.exit(0);
-    if (isPrompt && typeof input.transformedPrompt !== 'string') process.exit(0);
-    const [command, requested = 'on'] = isPrompt ? input.prompt.trim().split(/\s+/) : [];
-    const reply = ['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh'].includes(command)
-      ? setMode(requested) : null;
+    let reply;
+    if (isPrompt) {
+      if (typeof input.transformedPrompt !== 'string') process.exit(0);
+      const [command, requested = 'on'] = input.prompt.trim().split(/\s+/);
+      if (['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh'].includes(command)) reply = setMode(requested);
+    }
     const mode = reply?.mode ?? readMode();
     const rules = !isPrompt || reply?.mode ? guidance(mode) : '';
     if (isPrompt || rules) {
