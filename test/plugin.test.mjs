@@ -869,6 +869,7 @@ test('OpenCode retries proceed and new sessions get their own redirect', async (
   assert.match(await call('s1'), /gem:kamal/);
   assert.equal(await call('s1'), null);
   assert.match(await call('s2'), /gem:kamal/);
+  assert.deepEqual(host.requested, [{ sessionID: 's1' }, { sessionID: 's1' }, { sessionID: 's2' }]);
 });
 
 test('OpenCode uses the moved session location and a shell workdir, not its plugin location', async () => {
