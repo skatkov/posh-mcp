@@ -81,6 +81,7 @@ test('mode commands validate before writing and persist exactly the chosen mode'
     fs.rmSync(path.dirname(modeFile), { recursive: true });
     assert.deepEqual(setMode(mode), { mode, text: replies[mode] + ' Confirm in one short line.' });
     assert.equal(fs.readFileSync(modeFile, 'utf8'), mode + '\n');
+    assert.equal(fs.statSync(modeFile).mode & 0o777, 0o600);
     assert.deepEqual(fs.readdirSync(path.dirname(modeFile)), ['agent-mode']);
   }
 });
@@ -137,6 +138,22 @@ test('failed shell mode saves report the failure and retain the old setting', ()
   assert.doesNotMatch(result.additionalContext, /mode is now on/);
   assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
   assert.deepEqual(fs.readdirSync(path.dirname(modeFile)), ['agent-mode']);
+});
+
+test.skipIf(process.getuid?.() === 0)('mode writers do not replace a read-only setting', () => {
+  setMode('off');
+  fs.chmodSync(modeFile, 0o400);
+  assert.match(setMode('on').text, /Could not save the POSH mode/);
+  const result = runHook('UserPromptSubmit', project(), prompt('/posh on'));
+  assert.match(result.additionalContext, /Could not save the POSH mode/);
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
+});
+
+test('a cleanup error does not report a committed mode change as failed', ({ onTestFinished }) => {
+  const cleanup = vi.spyOn(fs, 'rmSync').mockImplementation(() => { throw new Error('cleanup failed'); });
+  onTestFinished(() => cleanup.mockRestore());
+  assert.equal(setMode('off').mode, 'off');
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
 });
 
 test('guidance honors the current persisted mode', ({ onTestFinished }) => {

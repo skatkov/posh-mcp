@@ -21,15 +21,20 @@ export function readMode() {
 function saveMode(mode) {
   const target = fs.lstatSync(modeFile, { throwIfNoEntry: false })?.isSymbolicLink()
     ? fs.realpathSync(modeFile) : modeFile;
+  if (fs.existsSync(target)) fs.accessSync(target, fs.constants.W_OK);
   const directory = path.dirname(target);
   fs.mkdirSync(directory, { recursive: true });
   const staging = fs.mkdtempSync(path.join(directory, '.agent-mode.'));
   try {
     const staged = path.join(staging, 'agent-mode');
-    fs.writeFileSync(staged, mode + '\n');
+    fs.writeFileSync(staged, mode + '\n', { mode: 0o600 });
     fs.renameSync(staged, target);
   } finally {
-    fs.rmSync(staging, { recursive: true });
+    try {
+      fs.rmSync(staging, { recursive: true });
+    } catch {
+      // Cleanup must not turn a committed rename into a reported save failure.
+    }
   }
 }
 
