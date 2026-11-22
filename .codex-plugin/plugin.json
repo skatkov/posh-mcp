@@ -1,6 +1,6 @@
 {
   "name": "posh",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Gives Codex version-matched Ruby and gem API documentation and prompts it to check it before relying on memory. Requires POSH to be installed and activated.",
   "author": {
     "name": "KROONI B.V.",
