@@ -8,10 +8,10 @@ mode_file=${XDG_CONFIG_HOME:-$HOME/.config}/posh/agent-mode
 
 mode() {
   case $(cat "$mode_file" 2>/dev/null) in
-    on) echo on ;;
+    auto) echo auto ;;
     off) echo off ;;
     feedback) echo feedback ;;
-    *) echo auto ;;
+    *) echo on ;;
   esac
 }
 
@@ -32,7 +32,7 @@ active() {
   case $(mode) in
     on | feedback) return 0 ;;
     off) return 1 ;;
-    *) ruby_project ;;
+    auto) ruby_project ;;
   esac
 }
 
@@ -93,7 +93,7 @@ $(ruleset)"
       emit "POSH is now off. Stop following earlier POSH instructions until the user turns it back on. Confirm in one short line."
       ;;
     auto)
-      rm -f "$mode_file"
+      set_mode auto
       if ruby_project; then
         emit "POSH is now on for Ruby projects only, which includes this one.$stop_feedback Confirm in one short line.
 
