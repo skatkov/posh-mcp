@@ -68,6 +68,10 @@ handle_command() {
       ;;
     feedback) message='POSH feedback mode is now on for every project.' ;;
     off) message='POSH is now off. Stop following earlier POSH instructions until the user turns it back on.' ;;
+    auto)
+      emit "POSH auto mode was removed. Tell the user to choose on or off; no mode was changed."
+      return 0
+      ;;
     *) return 0 ;;
   esac
 

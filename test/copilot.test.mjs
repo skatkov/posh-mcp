@@ -101,6 +101,10 @@ test('Copilot mode commands share state and preserve the transformed prompt', as
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'off');
   assert.equal(await runCopilot('sessionStart', cwd), null);
   assert.equal(runHook('SessionStart', cwd), null);
+  const retired = (await command('/posh auto')).modifiedTransformedPrompt;
+  assert.match(retired, /auto mode was removed/);
+  assert.ok(!retired.includes(MARKER));
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
   const other = project();
   assert.match((await command('/posh feedback', other)).modifiedTransformedPrompt, /POSH feedback mode is now on/);
   assert.ok((await runCopilot('sessionStart', other)).additionalContext.includes(FEEDBACK));

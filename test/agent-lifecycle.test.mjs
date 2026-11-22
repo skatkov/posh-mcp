@@ -71,10 +71,12 @@ test('shell and Node agree on default, trimmed, and unknown saved modes', () => 
 test('mode commands validate before writing and persist exactly the chosen mode', () => {
   fs.mkdirSync(path.dirname(modeFile), { recursive: true });
   fs.writeFileSync(modeFile, 'off\n');
-  for (const mode of ['auto', 'unknown', '', 'toString', '__proto__', null, undefined]) {
+  for (const mode of ['unknown', '', 'toString', '__proto__', null, undefined]) {
     assert.equal(setMode(mode), null);
     assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
   }
+  assert.match(setMode('auto').text, /auto mode was removed/);
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
   for (const mode of ['on', 'off', 'feedback']) {
     fs.rmSync(path.dirname(modeFile), { recursive: true });
     assert.deepEqual(setMode(mode), { mode, text: replies[mode] + ' Confirm in one short line.' });
