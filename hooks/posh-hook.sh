@@ -43,6 +43,7 @@ set_mode() (
   fi
   directory=$(dirname -- "$target")
   mkdir -p "$directory" && [ ! -d "$target" ] || exit 1
+  if [ -e "$target" ] && [ ! -w "$target" ]; then exit 1; fi
   staged=$(mktemp "$directory/.agent-mode.XXXXXX") || exit 1
   trap 'rm -f -- "$staged"' 0
   printf '%s\n' "$1" >"$staged" && mv -f -- "$staged" "$target"
