@@ -10,7 +10,6 @@ const feedback = fs.readFileSync(path.join(repo, 'skills/posh/feedback.md'), 'ut
 const replies = {
   on: 'POSH is now on for every project.',
   off: 'POSH is now off. Stop following earlier POSH instructions until the user turns it back on.',
-  auto: 'POSH is now on for Ruby projects only.',
   feedback: 'POSH feedback mode is now on for every project.',
 };
 
@@ -54,27 +53,25 @@ test('mode state uses HOME when XDG_CONFIG_HOME is absent', async ({ onTestFinis
 });
 
 test('shell and Node agree on default, trimmed, and unknown saved modes', () => {
-  const ruby = project('Gemfile');
   const other = project('.git');
   fs.mkdirSync(path.dirname(modeFile), { recursive: true });
   for (const [value, expected] of [
     [null, 'on'], ['on', 'on'], ['off\r\n', 'off'], ['feedback', 'feedback'],
-    [' \tfeedback\r\n', 'feedback'], ['auto', 'auto'], ['', 'on'], ['unknown', 'on'],
-    ['\n auto \n', 'auto'], ['off\nauto\n', 'on'],
+    [' \tfeedback\r\n', 'feedback'], ['auto\n', 'on'], ['', 'on'], ['unknown', 'on'],
+    ['\n off \n', 'off'], ['off\nfeedback\n', 'on'],
   ]) {
     if (value !== null) fs.writeFileSync(modeFile, value);
     assert.equal(readMode(), expected, value);
-    const rubyContext = runHook('SessionStart', ruby)?.additionalContext;
-    assert.equal(Boolean(rubyContext), expected !== 'off', value);
-    assert.equal(Boolean(rubyContext?.includes(FEEDBACK)), expected === 'feedback', value);
-    assert.equal(Boolean(runHook('SessionStart', other)), ['on', 'feedback'].includes(expected), value);
+    const context = runHook('SessionStart', other)?.additionalContext;
+    assert.equal(Boolean(context), expected !== 'off', value);
+    assert.equal(Boolean(context?.includes(FEEDBACK)), expected === 'feedback', value);
   }
 });
 
 test('mode commands validate before writing and persist exactly the chosen mode', () => {
   fs.mkdirSync(path.dirname(modeFile), { recursive: true });
   fs.writeFileSync(modeFile, 'off\n');
-  for (const mode of ['unknown', '', 'toString', '__proto__', null, undefined]) {
+  for (const mode of ['auto', 'unknown', '', 'toString', '__proto__', null, undefined]) {
     assert.equal(setMode(mode), null);
     assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
   }
@@ -83,15 +80,12 @@ test('mode commands validate before writing and persist exactly the chosen mode'
     assert.equal(setMode(mode), replies[mode] + ' Confirm in one short line.');
     assert.equal(fs.readFileSync(modeFile, 'utf8'), mode + '\n');
   }
-  assert.equal(setMode('auto'), replies.auto + ' Stop adding the POSH feedback section. Confirm in one short line.');
-  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'auto\n');
-  assert.equal(setMode('auto'), replies.auto + ' Confirm in one short line.');
 });
 
-test('feedback is revoked only when switching from feedback to on or auto', () => {
+test('switching from feedback to on explicitly revokes feedback', () => {
   for (const mode of Object.keys(replies)) {
     setMode('feedback');
-    const stop = ['on', 'auto'].includes(mode) ? ' Stop adding the POSH feedback section.' : '';
+    const stop = mode === 'on' ? ' Stop adding the POSH feedback section.' : '';
     assert.equal(setMode(mode), replies[mode] + stop + ' Confirm in one short line.');
   }
 });
@@ -102,34 +96,27 @@ test('failed mode writes throw instead of confirming an unpersisted mode', () =>
   fs.rmdirSync(modeFile);
 });
 
-test('shell reports a failed auto save instead of confirming the change', () => {
+test('shell reports a failed mode save instead of confirming the change', () => {
   const cwd = project('.git');
   const env = { XDG_CONFIG_HOME: project('posh') };
-  const result = runHook('UserPromptSubmit', cwd, prompt('/posh auto'), env);
+  const result = runHook('UserPromptSubmit', cwd, prompt('/posh off'), env);
   assert.match(result.additionalContext, /Could not save the POSH mode/);
   assert.doesNotMatch(result.additionalContext, /POSH is now/);
   assert.ok(runHook('SessionStart', cwd, '', env));
 });
 
-test('guidance honors explicit modes, current persisted mode, and Ruby project discovery', ({ onTestFinished }) => {
+test('guidance honors the current persisted mode', ({ onTestFinished }) => {
   const previous = process.env.PATH;
   onTestFinished(() => { process.env.PATH = previous; });
   const bin = project();
   fs.writeFileSync(path.join(bin, 'posh'), '', { mode: 0o755 });
   process.env.PATH = bin;
-  const ruby = project('Gemfile');
-  const other = project('.git');
-  assert.equal(guidance(other), ruleset);
-  assert.equal(guidance(ruby), ruleset);
-  for (const mode of ['on', 'off', 'auto', 'feedback']) {
+  assert.equal(guidance(), ruleset);
+  for (const mode of Object.keys(replies)) {
     setMode(mode);
     const suffix = mode === 'feedback' ? '\n\n' + feedback : '';
-    assert.equal(guidance(ruby), mode === 'off' ? '' : ruleset + suffix);
-    assert.equal(guidance(other), ['off', 'auto'].includes(mode) ? '' : ruleset + suffix);
+    assert.equal(guidance(), mode === 'off' ? '' : ruleset + suffix);
   }
-  assert.equal(guidance('/not/a/project', 'on'), ruleset);
-  assert.equal(guidance('/not/a/project', 'off'), '');
-  assert.equal(guidance('/not/a/project', 'feedback'), ruleset + '\n\n' + feedback);
 });
 
 test('PATH discovery rejects missing, non-executable and directory entries, then checks later entries', ({ onTestFinished }) => {
@@ -137,17 +124,18 @@ test('PATH discovery rejects missing, non-executable and directory entries, then
   onTestFinished(() => { process.env.PATH = previous; });
   const bin = project();
   process.env.PATH = bin;
-  assert.equal(guidance(null, 'on'), ruleset + missing);
+  assert.equal(guidance(), ruleset + missing);
   fs.writeFileSync(path.join(bin, 'posh'), '', { mode: 0o644 });
-  assert.equal(guidance(null, 'on'), ruleset + missing);
+  assert.equal(guidance(), ruleset + missing);
   fs.unlinkSync(path.join(bin, 'posh'));
   fs.mkdirSync(path.join(bin, 'posh'));
-  assert.equal(guidance(null, 'on'), ruleset + missing);
+  assert.equal(guidance(), ruleset + missing);
   const installed = project();
   fs.writeFileSync(path.join(installed, 'posh'), '', { mode: 0o755 });
   process.env.PATH = `${bin}${path.delimiter}${installed}`;
-  assert.equal(guidance(null, 'on'), ruleset);
-  assert.equal(guidance(null, 'feedback'), ruleset + '\n\n' + feedback);
+  assert.equal(guidance(), ruleset);
+  setMode('feedback');
+  assert.equal(guidance(), ruleset + '\n\n' + feedback);
 });
 
 test('an absent PATH uses the current directory and missing-POSH feedback retains both messages', ({ onTestFinished }) => {
@@ -160,9 +148,11 @@ test('an absent PATH uses the current directory and missing-POSH feedback retain
   });
   process.chdir(project());
   delete process.env.PATH;
-  assert.equal(guidance(null, 'feedback'), ruleset + missing + '\n\n' + feedback);
+  setMode('feedback');
+  assert.equal(guidance(), ruleset + missing + '\n\n' + feedback);
+  setMode('on');
   fs.writeFileSync('posh', '', { mode: 0o755 });
-  assert.equal(guidance(null, 'on'), ruleset);
+  assert.equal(guidance(), ruleset);
   process.env.PATH = '';
-  assert.equal(guidance(null, 'on'), ruleset);
+  assert.equal(guidance(), ruleset);
 });

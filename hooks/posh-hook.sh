@@ -12,29 +12,8 @@ mode() {
     END { sub(/^[[:space:]]+/, "", text); sub(/[[:space:]]+$/, "", text); print text }
   ' "$mode_file" 2>/dev/null)
   case $saved in
-    auto | off | feedback) printf '%s\n' "$saved" ;;
+    off | feedback) printf '%s\n' "$saved" ;;
     *) echo on ;;
-  esac
-}
-
-# $HOME is excluded because a stray ~/Gemfile does not make every folder Ruby.
-ruby_project() {
-  dir=${CLAUDE_PROJECT_DIR:-$PWD}
-  while [ "$dir" != / ] && [ "$dir" != "$HOME" ]; do
-    for marker in "$dir"/Gemfile "$dir"/Gemfile.lock "$dir"/gems.rb "$dir"/*.gemspec; do
-      [ -e "$marker" ] && return 0
-    done
-    [ -e "$dir/.git" ] && return 1
-    dir=$(dirname -- "$dir")
-  done
-  return 1
-}
-
-active() {
-  case $(mode) in
-    on | feedback) return 0 ;;
-    off) return 1 ;;
-    auto) ruby_project ;;
   esac
 }
 
@@ -74,7 +53,7 @@ handle_command() {
   esac
   requested=${2:-on}
   case $requested in
-    on | off | auto | feedback) ;;
+    on | off | feedback) ;;
     *) return 0 ;;
   esac
 
@@ -101,21 +80,12 @@ $(ruleset)"
     off)
       emit "POSH is now off. Stop following earlier POSH instructions until the user turns it back on. Confirm in one short line."
       ;;
-    auto)
-      if ruby_project; then
-        emit "POSH is now on for Ruby projects only, which includes this one.$stop_feedback Confirm in one short line.
-
-$(ruleset)"
-      else
-        emit "POSH is now on for Ruby projects only. This is not one, so stop following earlier POSH instructions. Confirm in one short line."
-      fi
-      ;;
   esac
 }
 
 case $event in
   SessionStart | SubagentStart)
-    active && emit "$(ruleset)"
+    [ "$(mode)" != off ] && emit "$(ruleset)"
     ;;
   UserPromptSubmit)
     handle_command

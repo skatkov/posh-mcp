@@ -5,11 +5,11 @@ import { guidance, readMode, setMode } from '../shared/agent-lifecycle.mjs';
 
 function projectContext(cwd) {
   const mode = readMode();
-  const project = rubyProject(cwd);
   const reset = 'For this prompt, discard all earlier POSH project-path instructions. ';
-  if (mode === 'off' || (mode === 'auto' && !project)) {
-    return reset + `POSH is ${mode === 'off' ? 'off' : 'inactive in this non-Ruby directory (auto mode)'}. Stop following earlier POSH guidance until it is active again.`;
+  if (mode === 'off') {
+    return reset + 'POSH is off. Stop following earlier POSH guidance until it is active again.';
   }
+  const project = rubyProject(cwd);
   // Copilot defaults plugin MCP servers to the plugin directory, not the Ruby project.
   const scope = project
     ? `POSH is active for this Ruby project. Check its version-matched documentation before relying on memory when available. When using POSH, pass ${JSON.stringify({ project })} to every MCP tool call; on the CLI, keep the same absolute path with --project. Do not use the MCP server's default project.`
@@ -42,9 +42,9 @@ try {
       const [command, mode = 'on'] = input.prompt.trim().split(/\s+/);
       if (['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh'].includes(command)) {
         context = setMode(mode);
-        if (context) context = [context, guidance(cwd)].filter(Boolean).join('\n\n');
+        if (context) context = [context, guidance()].filter(Boolean).join('\n\n');
       }
-    } else if (event === 'SessionStart' || event === 'SubagentStart') context = guidance(cwd);
+    } else if (event === 'SessionStart' || event === 'SubagentStart') context = guidance();
     if (context || event === 'UserPromptSubmit') {
       const scope = projectContext(cwd);
       context = context ? `${context}\n\n${scope}` : scope;
