@@ -23,7 +23,7 @@ ruleset() {
   # can be installed and still be invisible here. Say so instead of failing silently.
   command -v posh >/dev/null 2>&1 ||
     printf '\nThe posh command is not on PATH in this session, so no local documentation is reachable. Tell the user once, in one line, and do not call POSH tools or posh commands.\n'
-  if [ "$(mode)" = feedback ]; then
+  if [ "$1" = feedback ]; then
     printf '\n'
     cat "$root/skills/posh/feedback.md"
   fi
@@ -36,9 +36,17 @@ emit() {
   printf '"}}\n'
 }
 
-set_mode() {
-  mkdir -p "$(dirname -- "$mode_file")" && printf '%s\n' "$1" >"$mode_file"
-}
+set_mode() (
+  target=$mode_file
+  if [ -L "$target" ]; then
+    target=$(realpath "$target") && [ -e "$target" ] || exit 1
+  fi
+  directory=$(dirname -- "$target")
+  mkdir -p "$directory" && [ ! -d "$target" ] || exit 1
+  staged=$(mktemp "$directory/.agent-mode.XXXXXX") || exit 1
+  trap 'rm -f -- "$staged"' 0
+  printf '%s\n' "$1" >"$staged" && mv -f -- "$staged" "$target"
+)
 
 handle_command() {
   # The first "prompt" key on the single-line payload; an escaped quote just ends the match early.
@@ -53,39 +61,34 @@ handle_command() {
   esac
   requested=${2:-on}
   case $requested in
-    on | off | feedback) ;;
+    on)
+      message='POSH is now on for every project.'
+      # Earlier feedback instructions stay in the transcript, so they must be revoked.
+      [ "$(mode)" = feedback ] && message="$message Stop adding the POSH feedback section."
+      ;;
+    feedback) message='POSH feedback mode is now on for every project.' ;;
+    off) message='POSH is now off. Stop following earlier POSH instructions until the user turns it back on.' ;;
     *) return 0 ;;
   esac
-
-  # Earlier feedback instructions stay in the transcript, so they must be revoked.
-  stop_feedback=
-  [ "$(mode)" = feedback ] && stop_feedback=' Stop adding the POSH feedback section.'
 
   if ! set_mode "$requested"; then
     emit "Could not save the POSH mode. Tell the user the save failed; do not confirm a mode change."
     return 0
   fi
 
-  case $requested in
-    on)
-      emit "POSH is now on for every project.$stop_feedback Confirm in one short line.
+  message="$message Confirm in one short line."
+  if [ "$requested" != off ]; then
+    message="$message
 
-$(ruleset)"
-      ;;
-    feedback)
-      emit "POSH feedback mode is now on for every project. Confirm in one short line.
-
-$(ruleset)"
-      ;;
-    off)
-      emit "POSH is now off. Stop following earlier POSH instructions until the user turns it back on. Confirm in one short line."
-      ;;
-  esac
+$(ruleset "$requested")"
+  fi
+  emit "$message"
 }
 
 case $event in
   SessionStart | SubagentStart)
-    [ "$(mode)" != off ] && emit "$(ruleset)"
+    current=$(mode)
+    [ "$current" != off ] && emit "$(ruleset "$current")"
     ;;
   UserPromptSubmit)
     handle_command

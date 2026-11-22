@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import { repo, tmp, modeFile, project, runHook, prompt, FEEDBACK } from './support/plugin-fixture.mjs';
 
 const { guidance, readMode, ruleset, setMode } = await import('../shared/agent-lifecycle.mjs');
@@ -48,7 +48,7 @@ test('mode state uses HOME when XDG_CONFIG_HOME is absent', async ({ onTestFinis
   delete process.env.XDG_CONFIG_HOME;
   const lifecycle = await isolatedLifecycle('# Guidance');
   assert.equal(lifecycle.readMode(), 'off');
-  assert.equal(lifecycle.setMode('on'), replies.on + ' Confirm in one short line.');
+  assert.equal(lifecycle.setMode('on').text, replies.on + ' Confirm in one short line.');
   assert.equal(fs.readFileSync(mode, 'utf8'), 'on\n');
 });
 
@@ -77,8 +77,9 @@ test('mode commands validate before writing and persist exactly the chosen mode'
   }
   for (const mode of ['on', 'off', 'feedback']) {
     fs.rmSync(path.dirname(modeFile), { recursive: true });
-    assert.equal(setMode(mode), replies[mode] + ' Confirm in one short line.');
+    assert.deepEqual(setMode(mode), { mode, text: replies[mode] + ' Confirm in one short line.' });
     assert.equal(fs.readFileSync(modeFile, 'utf8'), mode + '\n');
+    assert.deepEqual(fs.readdirSync(path.dirname(modeFile)), ['agent-mode']);
   }
 });
 
@@ -86,23 +87,54 @@ test('switching from feedback to on explicitly revokes feedback', () => {
   for (const mode of Object.keys(replies)) {
     setMode('feedback');
     const stop = mode === 'on' ? ' Stop adding the POSH feedback section.' : '';
-    assert.equal(setMode(mode), replies[mode] + stop + ' Confirm in one short line.');
+    assert.equal(setMode(mode).text, replies[mode] + stop + ' Confirm in one short line.');
   }
 });
 
-test('failed mode writes throw instead of confirming an unpersisted mode', () => {
-  fs.mkdirSync(modeFile, { recursive: true });
-  assert.throws(() => setMode('off'));
-  fs.rmdirSync(modeFile);
+test('shell and Node mode saves update the target of a symlink without replacing the link', () => {
+  const cwd = project('settings');
+  const target = path.join(cwd, 'settings');
+  fs.mkdirSync(path.dirname(modeFile), { recursive: true });
+  fs.symlinkSync(path.relative(path.dirname(modeFile), target), modeFile);
+
+  setMode('off');
+  assert.equal(fs.readFileSync(target, 'utf8'), 'off\n');
+  const result = runHook('UserPromptSubmit', cwd, prompt('/posh feedback'));
+  assert.match(result.additionalContext, /POSH feedback mode is now on/);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'feedback\n');
+  assert.ok(fs.lstatSync(modeFile).isSymbolicLink());
 });
 
-test('shell reports a failed mode save instead of confirming the change', () => {
+test('failed Node mode saves retain the old setting and remove the staged file', ({ onTestFinished }) => {
+  setMode('off');
+  let stagedMode;
+  const rename = vi.spyOn(fs, 'renameSync').mockImplementation((staged) => {
+    stagedMode = fs.readFileSync(staged, 'utf8');
+    throw new Error('rename failed');
+  });
+  onTestFinished(() => rename.mockRestore());
+  const result = setMode('feedback');
+  assert.match(result.text, /Could not save the POSH mode/);
+  assert.equal(result.mode, undefined);
+  assert.equal(rename.mock.calls.length, 1);
+  const [[staged, destination]] = rename.mock.calls;
+  assert.equal(path.dirname(path.dirname(staged)), path.dirname(modeFile));
+  assert.equal(destination, modeFile);
+  assert.equal(stagedMode, 'feedback\n');
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
+  assert.deepEqual(fs.readdirSync(path.dirname(modeFile)), ['agent-mode']);
+});
+
+test('failed shell mode saves report the failure and retain the old setting', () => {
+  setMode('off');
   const cwd = project('.git');
-  const env = { XDG_CONFIG_HOME: project('posh') };
-  const result = runHook('UserPromptSubmit', cwd, prompt('/posh off'), env);
+  const bin = project();
+  fs.writeFileSync(path.join(bin, 'mv'), '#!/bin/sh\nexit 1\n', { mode: 0o755 });
+  const result = runHook('UserPromptSubmit', cwd, prompt('/posh feedback'), { PATH: `${bin}:${process.env.PATH}` });
   assert.match(result.additionalContext, /Could not save the POSH mode/);
-  assert.doesNotMatch(result.additionalContext, /POSH is now/);
-  assert.ok(runHook('SessionStart', cwd, '', env));
+  assert.doesNotMatch(result.additionalContext, /mode is now on/);
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'off\n');
+  assert.deepEqual(fs.readdirSync(path.dirname(modeFile)), ['agent-mode']);
 });
 
 test('guidance honors the current persisted mode', ({ onTestFinished }) => {

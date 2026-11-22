@@ -3,8 +3,7 @@ import path from 'node:path';
 import { poshRedirect, rubyProject } from '../shared/lookup-policy.mjs';
 import { guidance, readMode, setMode } from '../shared/agent-lifecycle.mjs';
 
-function projectContext(cwd) {
-  const mode = readMode();
+function projectContext(cwd, mode) {
   const reset = 'For this prompt, discard all earlier POSH project-path instructions. ';
   if (mode === 'off') {
     return reset + 'POSH is off. Stop following earlier POSH guidance until it is active again.';
@@ -36,19 +35,17 @@ try {
     if (!path.isAbsolute(input.cwd)) process.exit(0);
     if (!fs.statSync(input.cwd).isDirectory()) process.exit(0);
     const cwd = fs.realpathSync(input.cwd);
-    if (event === 'UserPromptSubmit' && typeof input.transformedPrompt !== 'string') process.exit(0);
-    let context;
-    if (event === 'UserPromptSubmit') {
-      const [command, mode = 'on'] = input.prompt.trim().split(/\s+/);
-      if (['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh'].includes(command)) {
-        context = setMode(mode);
-        if (context) context = [context, guidance()].filter(Boolean).join('\n\n');
-      }
-    } else if (event === 'SessionStart' || event === 'SubagentStart') context = guidance();
-    if (context || event === 'UserPromptSubmit') {
-      const scope = projectContext(cwd);
-      context = context ? `${context}\n\n${scope}` : scope;
-      output = event === 'UserPromptSubmit'
+    const isPrompt = event === 'UserPromptSubmit';
+    if (!isPrompt && event !== 'SessionStart' && event !== 'SubagentStart') process.exit(0);
+    if (isPrompt && typeof input.transformedPrompt !== 'string') process.exit(0);
+    const [command, requested = 'on'] = isPrompt ? input.prompt.trim().split(/\s+/) : [];
+    const reply = ['/posh', '/posh:posh', '$posh', '$posh:posh', '@posh'].includes(command)
+      ? setMode(requested) : null;
+    const mode = reply?.mode ?? readMode();
+    const rules = !isPrompt || reply?.mode ? guidance(mode) : '';
+    if (isPrompt || rules) {
+      const context = [reply?.text, rules, projectContext(cwd, mode)].filter(Boolean).join('\n\n');
+      output = isPrompt
         ? { modifiedTransformedPrompt: `${context}\n\n${input.transformedPrompt}` }
         : { additionalContext: context };
     }

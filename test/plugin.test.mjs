@@ -295,6 +295,16 @@ test('OpenCode /posh persists the mode before the turn and passes other text thr
   assert.ok(host.sent.at(-1).text.includes(MARKER));
 });
 
+test('OpenCode reports a failed mode save without confirming the change', async ({ onTestFinished }) => {
+  const host = await setupOpenCode(project());
+  fs.mkdirSync(modeFile, { recursive: true });
+  onTestFinished(() => fs.rmdirSync(modeFile));
+  await host.run('off');
+  const { text } = host.sent.at(-1);
+  assert.match(text, /Could not save the POSH mode/);
+  assert.doesNotMatch(text, /POSH is now off|# POSH:/);
+});
+
 test('OpenCode trims mode commands and defaults to on for unknown saved values', async () => {
   const host = await setupOpenCode(project());
   await host.run('  off \n');
