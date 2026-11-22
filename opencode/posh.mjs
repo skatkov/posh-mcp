@@ -31,7 +31,7 @@ export default {
         execute: async ({ sessionID, prompt, delivery }) => {
           const arg = (prompt.text || '').trim();
           const mode = arg === '' ? 'on' : arg;
-          const text = setMode(mode) ?? ruleset + '\n\n' + arg;
+          const text = setMode(mode)?.text ?? ruleset + '\n\n' + arg;
           await ctx.session.prompt({
             ...prompt,
             sessionID,

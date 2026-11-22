@@ -22,7 +22,7 @@ function runCopilotProcess(event, cwd, input = {}, extraEnv = {}) {
   return result ? JSON.parse(result) : null;
 }
 
-async function runCopilot(event, cwd, input = {}, extraEnv = {}) {
+async function runCopilot(event, cwd, input = {}, extraEnv = {}, readModeFile) {
   vi.resetModules();
   const events = {
     sessionStart: 'SessionStart', subagentStart: 'SubagentStart',
@@ -35,8 +35,11 @@ async function runCopilot(event, cwd, input = {}, extraEnv = {}) {
   })) vi.stubEnv(key, value);
   const stdin = typeof input === 'string' ? input : JSON.stringify({ sessionId: 'native', cwd, ...input });
   const readFile = fs.readFileSync;
-  vi.spyOn(fs, 'readFileSync').mockImplementation((file, ...args) =>
-    file === 0 ? Buffer.from(stdin) : readFile(file, ...args));
+  vi.spyOn(fs, 'readFileSync').mockImplementation((file, ...args) => {
+    if (file === 0) return Buffer.from(stdin);
+    if (file === modeFile && readModeFile) return readModeFile();
+    return readFile(file, ...args);
+  });
   const output = vi.spyOn(console, 'log').mockImplementation(() => {});
   const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('hook exit'); });
   const argv = process.argv;
@@ -107,6 +110,37 @@ test('Copilot mode commands share state and preserve the transformed prompt', as
   assert.match(on.modifiedTransformedPrompt, /Confirm in one short line\.\n\n# POSH:/);
   assert.ok(!on.modifiedTransformedPrompt.includes(FEEDBACK));
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'on');
+});
+
+test('Copilot renders guidance and project context from one mode per response', async () => {
+  const cwd = project('Gemfile');
+  let reads = 0;
+  const changingMode = () => ++reads === 1 ? 'feedback\n' : 'off\n';
+  const { additionalContext } = await runCopilot('sessionStart', cwd, {}, {}, changingMode);
+  assert.ok(additionalContext.includes(FEEDBACK));
+  assert.match(additionalContext, /POSH is active for this Ruby project/);
+  assert.equal(reads, 1);
+
+  const prompt = '/posh feedback';
+  const { modifiedTransformedPrompt } = await runCopilot('userPromptTransformed', cwd, {
+    prompt, transformedPrompt: prompt,
+  }, {}, changingMode);
+  assert.ok(modifiedTransformedPrompt.includes(FEEDBACK));
+  assert.match(modifiedTransformedPrompt, /POSH is active for this Ruby project/);
+  assert.equal(reads, 1, 'a successful mode command renders from the mode it saved');
+});
+
+test('Copilot reports failed mode commands without confirming or injecting the requested mode', async ({ onTestFinished }) => {
+  const cwd = project('Gemfile');
+  fs.mkdirSync(modeFile, { recursive: true });
+  onTestFinished(() => fs.rmdirSync(modeFile));
+  const { modifiedTransformedPrompt } = await runCopilot('userPromptTransformed', cwd, {
+    prompt: '/posh feedback', transformedPrompt: 'original prompt',
+  });
+  assert.match(modifiedTransformedPrompt, /Could not save the POSH mode/);
+  assert.ok(modifiedTransformedPrompt.endsWith('original prompt'));
+  assert.ok(!modifiedTransformedPrompt.includes(MARKER));
+  assert.doesNotMatch(modifiedTransformedPrompt, /feedback mode is now on|Include POSH feedback/);
 });
 
 test('Copilot scopes ordinary prompts without changing mode or evaluating command arguments', async () => {

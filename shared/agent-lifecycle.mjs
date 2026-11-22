@@ -18,6 +18,21 @@ export function readMode() {
   }
 }
 
+function saveMode(mode) {
+  const target = fs.lstatSync(modeFile, { throwIfNoEntry: false })?.isSymbolicLink()
+    ? fs.realpathSync(modeFile) : modeFile;
+  const directory = path.dirname(target);
+  fs.mkdirSync(directory, { recursive: true });
+  const staging = fs.mkdtempSync(path.join(directory, '.agent-mode.'));
+  try {
+    const staged = path.join(staging, 'agent-mode');
+    fs.writeFileSync(staged, mode + '\n');
+    fs.renameSync(staged, target);
+  } finally {
+    fs.rmSync(staging, { recursive: true });
+  }
+}
+
 export function setMode(mode) {
   const replies = {
     on: 'POSH is now on for every project.',
@@ -27,13 +42,15 @@ export function setMode(mode) {
   if (!Object.hasOwn(replies, mode)) return null;
   const stopFeedback = mode === 'on' && readMode() === 'feedback'
     ? ' Stop adding the POSH feedback section.' : '';
-  fs.mkdirSync(path.dirname(modeFile), { recursive: true });
-  fs.writeFileSync(modeFile, mode + '\n');
-  return replies[mode] + stopFeedback + ' Confirm in one short line.';
+  try {
+    saveMode(mode);
+  } catch {
+    return { text: 'Could not save the POSH mode. Tell the user the save failed; do not confirm a mode change.' };
+  }
+  return { mode, text: replies[mode] + stopFeedback + ' Confirm in one short line.' };
 }
 
-export function guidance() {
-  const mode = readMode();
+export function guidance(mode = readMode()) {
   if (mode === 'off') return '';
   let text = ruleset;
   const installed = (process.env.PATH || '').split(path.delimiter).some((directory) => {
