@@ -218,7 +218,8 @@ describe('redirect policy', () => {
       assert.match(reason, /retry the original call; it will go through/);
       assert.equal(await poshRedirect({ ...input, tool_input }), null);
     }
-    assert.deepEqual(fs.readdirSync(path.join(process.env.PLUGIN_DATA, 'nudged')).map((name) => name.split('.').at(-1)).sort(), [
+    const markers = fs.readdirSync(path.join(process.env.PLUGIN_DATA, 'nudged'));
+    assert.deepEqual(markers.map((name) => name.match(/^policy\.[a-f0-9]{64}\.(.+)$/)?.[1]).sort(), [
       'gem-tree', 'gem:kamal',
     ]);
   });
