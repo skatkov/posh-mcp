@@ -76,7 +76,14 @@ test('Copilot lifecycle uses the payload cwd and returns native additionalContex
     assert.ok(out.additionalContext.includes('every MCP tool call'));
     assert.ok(!out.additionalContext.includes('argument-hint'));
   }
-  assert.equal(runCopilotProcess('sessionStart', project()), null);
+  const other = project();
+  const unscoped = runCopilotProcess('sessionStart', other).additionalContext;
+  assert.ok(unscoped.includes(MARKER));
+  assert.match(unscoped, /POSH is enabled, but no Ruby project was found/);
+  assert.ok(!unscoped.includes(FEEDBACK));
+  assert.equal(fs.existsSync(modeFile), false);
+  runHook('UserPromptSubmit', other, prompt('/posh auto'));
+  assert.equal(runCopilotProcess('sessionStart', other), null);
   const boundary = project('Gemfile');
   fs.mkdirSync(path.join(boundary, 'other/.git'), { recursive: true });
   assert.equal(runCopilotProcess('sessionStart', path.join(boundary, 'other')), null);
@@ -103,7 +110,7 @@ test('Copilot mode commands share state and preserve the transformed prompt', as
   assert.ok(!on.modifiedTransformedPrompt.includes(FEEDBACK));
   assert.equal(fs.readFileSync(modeFile, 'utf8').trim(), 'on');
   assert.match((await command('/posh auto', other)).modifiedTransformedPrompt, /inactive in this non-Ruby directory \(auto mode\)/);
-  assert.equal(fs.existsSync(modeFile), false);
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'auto\n');
   assert.equal(await runCopilot('sessionStart', other), null);
 });
 
@@ -260,6 +267,7 @@ test('Copilot revokes stale guidance when auto mode leaves Ruby, then reactivate
   const ruby = project('Gemfile', '.git');
   const other = path.join(ruby, 'unrelated-repo');
   fs.mkdirSync(path.join(other, '.git'), { recursive: true });
+  runHook('UserPromptSubmit', ruby, prompt('/posh auto'));
   await runCopilot('sessionStart', ruby);
   const input = { prompt: 'continue', transformedPrompt: 'continue' };
   const inactive = (await runCopilot('userPromptTransformed', other, input)).modifiedTransformedPrompt;
@@ -270,7 +278,7 @@ test('Copilot revokes stale guidance when auto mode leaves Ruby, then reactivate
   const active = (await runCopilot('userPromptTransformed', ruby, input)).modifiedTransformedPrompt;
   assert.ok(active.includes(JSON.stringify({ project: ruby })));
   assert.match(active, /POSH is active for this Ruby project/);
-  assert.equal(fs.existsSync(modeFile), false);
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'auto\n');
 });
 
 test('Copilot never reuses a previous project in forced-on or off mode', async () => {

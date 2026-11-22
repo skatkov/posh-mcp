@@ -124,12 +124,12 @@ current-project directive, not another copy of the full ruleset.
 
 | Command | Effect |
 | --- | --- |
-| `/posh auto` | Default. Active when the project has a `Gemfile`, `Gemfile.lock`, `gems.rb`, or `*.gemspec`, in the working directory or above it, up to the Git root |
-| `/posh` or `/posh on` | Active in every project. Use this when the Ruby app sits in a subdirectory |
+| `/posh` or `/posh on` | Default. Active in every project, including when the Ruby app sits in a subdirectory |
+| `/posh auto` | Active when the project has a `Gemfile`, `Gemfile.lock`, `gems.rb`, or `*.gemspec`, in the working directory or above it, up to the Git root |
 | `/posh feedback` | Same as `/posh on`, and the agent ends replies that used POSH with a **POSH feedback** section. The feedback stays in the reply; nothing is sent anywhere |
 | `/posh off` | Inactive everywhere |
 
-In Codex, use `$posh` in place of `/posh`. The mode is saved in
+In Codex, use `$posh` in place of `/posh`. An explicit mode choice is saved in
 `~/.config/posh/agent-mode` and shared by all four agents. Copilot uses its
 `userPromptTransformed` hook to apply mode changes and supply the confirmation
 instructions without replacing the user's original prompt. These plugins are
@@ -149,7 +149,7 @@ project against that root, not against an arbitrary subdirectory. It requires a 
 documentation; private gems with docs are treated the same as public ones.
 Redirect instructions pin both search and read to the resolved project, so an MCP
 server started in a different project cannot silently select the wrong versions.
-Gems with no local docs, git-sourced gems, non-Ruby projects in auto mode,
+Gems with no local docs, git-sourced gems, lookups outside Ruby projects,
 and `/posh off` are left alone. A broad search of the gem tree gets one
 separate nudge when any locked gem has local docs.
 

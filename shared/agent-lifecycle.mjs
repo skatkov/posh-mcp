@@ -13,9 +13,9 @@ const feedback = fs.readFileSync(path.join(root, 'skills/posh/feedback.md'), 'ut
 export function readMode() {
   try {
     const mode = fs.readFileSync(modeFile, 'utf8').trim();
-    return ['on', 'off', 'feedback'].includes(mode) ? mode : 'auto';
+    return ['on', 'off', 'auto', 'feedback'].includes(mode) ? mode : 'on';
   } catch {
-    return 'auto';
+    return 'on';
   }
 }
 
@@ -29,11 +29,8 @@ export function setMode(mode) {
   if (!Object.hasOwn(replies, mode)) return null;
   const stopFeedback = readMode() === 'feedback' && ['on', 'auto'].includes(mode)
     ? ' Stop adding the POSH feedback section.' : '';
-  if (mode === 'auto') fs.rmSync(modeFile, { force: true });
-  else {
-    fs.mkdirSync(path.dirname(modeFile), { recursive: true });
-    fs.writeFileSync(modeFile, mode + '\n');
-  }
+  fs.mkdirSync(path.dirname(modeFile), { recursive: true });
+  fs.writeFileSync(modeFile, mode + '\n');
   return replies[mode] + stopFeedback + ' Confirm in one short line.';
 }
 

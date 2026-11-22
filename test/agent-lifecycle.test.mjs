@@ -53,12 +53,12 @@ test('mode state uses HOME when XDG_CONFIG_HOME is absent', async ({ onTestFinis
   assert.equal(fs.readFileSync(mode, 'utf8'), 'on\n');
 });
 
-test('mode discovery defaults safely and accepts only trimmed, known modes', () => {
-  assert.equal(readMode(), 'auto');
+test('mode discovery defaults to on and accepts only trimmed, known modes', () => {
+  assert.equal(readMode(), 'on');
   fs.mkdirSync(path.dirname(modeFile), { recursive: true });
   for (const [value, expected] of [
     ['on', 'on'], ['off', 'off'], ['feedback', 'feedback'],
-    [' \tfeedback\r\n', 'feedback'], ['auto', 'auto'], ['', 'auto'], ['unknown', 'auto'],
+    [' \tfeedback\r\n', 'feedback'], ['auto', 'auto'], ['', 'on'], ['unknown', 'on'],
   ]) {
     fs.writeFileSync(modeFile, value);
     assert.equal(readMode(), expected, value);
@@ -78,7 +78,7 @@ test('mode commands validate before writing and persist exactly the chosen mode'
     assert.equal(fs.readFileSync(modeFile, 'utf8'), mode + '\n');
   }
   assert.equal(setMode('auto'), replies.auto + ' Stop adding the POSH feedback section. Confirm in one short line.');
-  assert.equal(fs.existsSync(modeFile), false);
+  assert.equal(fs.readFileSync(modeFile, 'utf8'), 'auto\n');
   assert.equal(setMode('auto'), replies.auto + ' Confirm in one short line.');
 });
 
@@ -104,7 +104,7 @@ test('guidance honors explicit modes, current persisted mode, and Ruby project d
   process.env.PATH = bin;
   const ruby = project('Gemfile');
   const other = project('.git');
-  assert.equal(guidance(other), '');
+  assert.equal(guidance(other), ruleset);
   assert.equal(guidance(ruby), ruleset);
   for (const mode of ['on', 'off', 'auto', 'feedback']) {
     setMode(mode);

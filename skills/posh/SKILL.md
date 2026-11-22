@@ -44,5 +44,5 @@ If docs are missing or stale, `sync` once and retry. If POSH is unavailable or
 still lacks the docs, use matching official sources and say so. For activation,
 point the user to `posh activate <posh_key>` locally and leave the key with them.
 
-`/posh off` suspends this guidance. `/posh` enables it everywhere,
-`/posh auto` limits it to Ruby projects, and `/posh feedback` adds feedback.
+POSH is enabled everywhere by default. `/posh` turns it on, `/posh off` suspends
+this guidance, `/posh auto` limits it to Ruby projects, and `/posh feedback` adds feedback.
